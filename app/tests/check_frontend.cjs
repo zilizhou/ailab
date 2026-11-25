@@ -45,6 +45,14 @@ async function interactionChecks(){
   await run('refresh(false)');
   assert.ok(root.innerHTML.includes('教师新指导'));
   assert.ok(root.innerHTML.includes('尚在输入的实验发现'));
+  const pending=[];
+  context.fetch=()=>new Promise(resolve=>pending.push(resolve));
+  const oldRequest=run('refresh(false)'),newRequest=run('refresh(false)');
+  pending[1]({ok:true,status:200,json:async()=>({...updated,course:{...updated.course,title:'新课程'}})});
+  await newRequest;
+  pending[0]({ok:true,status:200,json:async()=>({...updated,course:{...updated.course,title:'旧课程'}})});
+  await oldRequest;
+  assert.equal(run('S.data.course.title'),'新课程','An older poll must not overwrite a newer course context');
   let calls=[];
   context.fetch=async(path,options)=>{
     calls.push(JSON.parse(options.body));

@@ -2,6 +2,10 @@
 
 访问入口：<http://10.31.26.22:8766/>（校园内网）。8765 已被其他项目使用。
 
+第一阶段现已提供多课程、多学期、实验内容版本、教学班与名单、注册与邀请码、自主及教师分组、任务预览发布和独立小组实验。数据库升级为版本 2。当前版本通过 26 项后端验收、两组前端运行检查及 28 项在线教学流程检查，实际浏览器视觉验收仍待完成。
+
+迁移前已保留 `shared/backups/pre-teaching-final-<release>.sqlite3`，并用数据库副本连续演练两次，校验旧表原字段与原值保持一致。运行时数据仍在原 `shared/data/`。数据库已升级后，如需回退，应同时评估旧代码与迁移前快照，并先保留新版本产生的数据；不能只切换代码后假设新教学管理关系仍然可用。
+
 2026-11-25 部署验证通过：服务器上 13 项后端验收、前端运行检查与依赖一致性检查通过；运行服务的 19 项在线流程检查通过；从部署电脑验证页面、资源、3 个试用账号及登录退出通过。临时测试课程和记录已清理，SQLite 完整性为 `ok`。此轮未进行浏览器视觉验收。部署信息见 `deployment.json`，已安装的精确依赖版本见 `requirements-server.lock`。
 
 当日 UI02 更新恢复已确认 v0.2 的页面布局和组件样式。服务器页面加载带 `?v=ui02` 的资源，三份前端资源的校验值与源码一致；刷新页面即可加载。更新前数据库已备份到 `shared/backups/pre-ui02-20261125121852.sqlite3`，沿用原有持久化目录。后台与前端运行验收、19 项在线流程检查通过；浏览器控制超时，尚未完成实际截图对照。
@@ -55,3 +59,14 @@ systemctl --user start ai-lab-assistant.service
 ```
 
 前端支持内网 HTTP：操作编号使用 `crypto.getRandomValues`，重试索引对不可用的 `crypto.subtle` 有兼容路径，权限与载荷校验仍由后端处理。相关兼容检查包括在前端测试中移除 `crypto.randomUUID` 与 `crypto.subtle` 后完成重试流程。
+
+当前教学流程在线验收命令：
+
+```sh
+~/apps/ai-lab-assistant/.venv/bin/python \
+  ~/apps/ai-lab-assistant/current/deploy/check_teaching_live.py \
+  --base-url http://10.31.26.22:8766 \
+  --data-dir /home/zlzhou/apps/ai-lab-assistant/shared/data
+```
+
+该脚本使用独立的临时教师与学生，验证建课、开班、选课、发布、组队、模板版本、测量、反馈、归档及跨学期复制；退出时清理自身创建的账户、课程与记录。

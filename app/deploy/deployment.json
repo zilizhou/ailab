@@ -1,9 +1,9 @@
 {
-  "deployed_at_utc": "2026-11-25 12:20:23 UTC",
+  "deployed_at_utc": "2026-11-25 15:19:22 UTC",
   "server": "10.31.26.22",
   "ssh_user": "zlzhou",
   "url": "http://10.31.26.22:8766/",
-  "release": "20261125121852",
+  "release": "20261125150740",
   "service": "ai-lab-assistant.service",
   "service_manager": "systemd --user",
   "root": "/home/zlzhou/apps/ai-lab-assistant",
@@ -12,16 +12,21 @@
   "user_linger_enabled": true,
   "model_mode": "rules",
   "verification": {
-    "backend_tests": 13,
-    "live_deployment_checks": 19,
-    "frontend_runtime_checks": "passed: approved layout/styles, 8 screens, 4 dialogs, extraction cards, question routing, teacher controls, intranet HTTP",
-    "remote_pilot_accounts": 3,
-    "sqlite_integrity": "ok",
+    "backend_tests": 26,
+    "live_teaching_checks": 28,
+    "frontend_runtime_checks": "approved experiment workspace plus management pages, 17 management dialogs, publish preview/confirmation, registration and grouping",
+    "production_assets": "4 files matched to source",
+    "schema_migration": "production snapshot migrated twice; original legacy fields and values preserved",
     "temporary_test_data_removed": true,
     "browser_visual_check": "not performed",
-    "deployed_asset_hashes": "all three UI02 assets match source"
+    "frontend_context_switch": "stale responses discarded; roster-only updates reflected"
   },
-  "previous_release": "20261125115228",
+  "previous_release": "20261125121852",
   "ui_version": "0.2",
-  "ui_reference": "design/approved-ui-v0.2.html"
+  "ui_reference": "design/approved-ui-v0.2.html",
+  "project": "验知有道——面向实验全过程的多模态智能助教",
+  "platform_version": "0.2-stage1",
+  "schema_version": 2,
+  "asset_version": "teaching04",
+  "database_backup": "shared/backups/pre-teaching-final-20261125150740.sqlite3"
 }

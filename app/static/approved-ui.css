@@ -111,3 +111,45 @@
 #lab-v2 .x-reviewtext{white-space:pre-wrap;overflow-wrap:anywhere}
 #lab-v2 .x-dialog p{font-size:16px;line-height:1.75}
 #lab-v2 .x-ic svg{width:18px;height:18px}
+
+/* Course and semester management extends the approved component system. */
+#lab-v2 .teaching-context{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.1fr) minmax(130px,.8fr);gap:12px;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+#lab-v2 .teaching-context label{font-size:12px;color:var(--muted);margin:0 0 5px}
+#lab-v2 .teaching-context select{width:100%;font-size:14px;background:white;min-height:40px}
+#lab-v2 .teaching-navlabel{margin:20px 0 4px}
+#lab-v2 .course-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#lab-v2 .course-card h2{margin:13px 0 8px}
+#lab-v2 .course-card .actions{margin-top:17px}
+#lab-v2 .stack{display:grid;gap:16px}
+#lab-v2 .stack>.x-panel+.x-panel{margin-top:0}
+#lab-v2 .resource-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid var(--line);font-size:14px}
+#lab-v2 .resource-row:last-child{border:0}
+#lab-v2 .resource-row p{margin-top:3px}
+#lab-v2 .invite-code{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;background:#f3f7ff;border-radius:9px;font-size:14px}
+#lab-v2 .invite-code strong{font-size:18px;letter-spacing:1px;color:var(--b);font-variant-numeric:tabular-nums}
+#lab-v2 .scheme-section{margin-top:22px;padding-top:20px;border-top:1px solid var(--line)}
+#lab-v2 .scheme-section>.small{margin:7px 0}
+#lab-v2 .team-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+#lab-v2 .team-card{padding:14px;border:1px solid var(--line);border-radius:10px;background:#fbfcff;min-width:0}
+#lab-v2 .team-card strong{font-size:14px}
+#lab-v2 .team-card p{font-size:14px;color:var(--muted);margin:9px 0;overflow-wrap:anywhere}
+#lab-v2 .team-card.mine{border-color:#adc7f1;background:#f4f8ff}
+#lab-v2 .x-phone .team-grid{grid-template-columns:1fr}
+#lab-v2 .teaching-dialog{max-width:650px}
+#lab-v2 .teaching-dialog .field{margin:13px 0}
+#lab-v2 .teaching-dialog .field label{font-size:14px}
+#lab-v2 .teaching-dialog input,#lab-v2 .teaching-dialog select{min-height:42px}
+#lab-v2 .teaching-dialog textarea{min-height:88px;font-size:16px}
+#lab-v2 .dialog-actions{margin-top:22px;padding-top:15px;border-top:1px solid var(--line);position:sticky;bottom:-23px;background:white;z-index:2;padding-bottom:8px}
+#lab-v2 .target-list{display:grid;gap:10px;margin:12px 0 20px}
+#lab-v2 .target-row{border:1px solid var(--line);padding:12px;border-radius:9px}
+#lab-v2 .target-row select{width:100%;margin-top:5px}
+#lab-v2 .class-choice{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:400}
+#lab-v2 .class-choice input{width:17px;height:17px;min-height:17px;flex:none;margin:0;accent-color:var(--b)}
+#lab-v2 .publish-review h3{font-size:18px;margin-bottom:10px}
+#lab-v2 .publish-review p{font-size:14px}
+#lab-v2 .auth-form>.x-link{margin-top:12px}
+@media(max-width:850px){#lab-v2 .course-grid{grid-template-columns:1fr}#lab-v2 .teaching-context{grid-template-columns:1fr 1fr}#lab-v2 .teaching-context>div:last-child{grid-column:1/-1}}
+@media(max-width:580px){#lab-v2 .teaching-context{grid-template-columns:1fr;gap:10px;margin-bottom:20px}#lab-v2 .teaching-context>div:last-child{grid-column:auto}#lab-v2 .teaching-navlabel{display:none}#lab-v2 .team-grid{grid-template-columns:1fr}#lab-v2 .teaching-dialog .x-fields{grid-template-columns:1fr}#lab-v2 .dialog-actions{bottom:-18px}#lab-v2 .invite-code{gap:8px}#lab-v2 .invite-code .small{width:100%}}
+#lab-v2 .resource-row>span,#lab-v2 .resource-row>div{min-width:0;overflow-wrap:anywhere}
+#lab-v2 h1,#lab-v2 h2{overflow-wrap:anywhere}

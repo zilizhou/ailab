@@ -87,13 +87,15 @@ def init_db():
         for username, name, role, group in [("teacher", "周老师", "teacher", None), ("student1", "林同学", "student", "group-1"), ("student2", "陈同学", "student", "group-2")]:
             salt = secrets.token_hex(16)
             c.execute("INSERT OR IGNORE INTO users VALUES(?,?,?,?,?,?,?,?)", (username, username, name, role, salt, hash_password("Lab2026!", salt), "circuits-2026", group))
+        from teaching import migrate
+        migrate(c, EXPERIMENT, uid, now, packed)
 
 @asynccontextmanager
 async def lifespan(app):
     init_db()
     yield
 
-app = FastAPI(title="AI 实验助教 · 本地教学试用版", lifespan=lifespan)
+app = FastAPI(title="验知有道 · 实验教学助教", lifespan=lifespan)
 
 @app.middleware("http")
 async def protect_origin(request, call_next):
@@ -119,10 +121,7 @@ def user(request, c):
 def group_for(c, who, group_id, role=None):
     if role and who["role"] != role:
         raise HTTPException(403, "当前角色不能执行此操作")
-    g = c.execute("SELECT * FROM groups WHERE id=? AND course_id=?", (group_id, who["course_id"])).fetchone()
-    if not g or (who["role"] == "student" and who["group_id"] != group_id):
-        raise HTTPException(404, "未找到可访问的小组")
-    return dict(g)
+    return TEACHING.group(c, who, group_id)
 
 def text_field(data, key, maximum=3000, required=True):
     value = data.get(key, "")
@@ -143,12 +142,21 @@ def once(c, who, data, action, fn):
     return result
 
 def writable(g, data):
+    TEACHING.check_run(g)
     if data.get("revision") != g["revision"]:
         raise HTTPException(409, "实物修订已变化。请核对当前接线后重新提取；旧记录仍可在时间线查看。")
     if g["status"] in ("submitted", "reviewed"):
         raise HTTPException(409, "已提交的实验已锁定，请由教师退回后补充")
 
 def add_event(c, who, g, kind, data):
+    if g.get('archived'):
+        raise HTTPException(409, '课程已归档，请先恢复后修改')
+    if g.get('team_id'):
+        participants = [p['id'] for p in TEACHING.members(c, g)]
+        data = {**data, 'participants': participants, 'experiment_version_id': g.get('experiment_version_id')}
+        if kind in ('measurement', 'observation', 'photo', 'revision', 'submission'):
+            c.execute('UPDATE teams SET locked=1 WHERE id=?', (g['team_id'],))
+            c.execute('UPDATE groups SET roster_snapshot=COALESCE(roster_snapshot,?) WHERE id=?', (packed(participants), g['id']))
     event_id = uid()
     c.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?)", (event_id, g["id"], who["id"], g["revision"], kind, packed(data), now()))
     return {"id": event_id, "saved": True}
@@ -195,9 +203,11 @@ def parse_reading(raw):
         parsed["requires_revision"] = True
     return parsed
 
-def assess(fields):
+def assess(fields, package=None):
+    package = package or EXPERIMENT
     vin, out = fields["vin"]["value_v"], fields["vout"]["value_v"]
-    result = {"code": "incomplete", "label": "待补充测量", "expected_v": None, "deviation_v": None, "tolerance_v": .05, "warnings": []}
+    tolerance = package.get('tolerance_v', .05)
+    result = {"code": "incomplete", "label": "待补充测量", "expected_v": None, "deviation_v": None, "tolerance_v": tolerance, "warnings": []}
     if fields.get("reference") != "TP0":
         result["warnings"].append("参考点未确认为 TP0，当前读数不能直接用于分压判定")
     if any(q is not None and q < 0 for q in (vin, out)):
@@ -209,12 +219,13 @@ def assess(fields):
     if result["warnings"]:
         result.update(code="verify", label="测量条件待核对")
         return result
-    if not 3.20 <= vin <= 3.40:
+    if not package.get('supply_min_v', 3.20) <= vin <= package.get('supply_max_v', 3.40):
         result.update(code="supply", label="供电超出实验范围")
         return result
-    expected = Decimal(str(vin)) / 2
+    r1, r2 = Decimal(str(package.get('r1_ohm', 10000))), Decimal(str(package.get('r2_ohm', 10000)))
+    expected = Decimal(str(vin)) * r2 / (r1 + r2)
     deviation = Decimal(str(out)) - expected
-    code = "pass" if abs(deviation) <= Decimal(".050") else "low" if deviation < 0 else "high"
+    code = "pass" if abs(deviation) <= Decimal(str(tolerance)) else "low" if deviation < 0 else "high"
     result.update(code=code, label={"pass": "符合数值判据", "low": "输出低于预期", "high": "输出高于预期"}[code], expected_v=float(expected), deviation_v=float(deviation))
     return result
 
@@ -225,7 +236,7 @@ def group_data(c, who, gid):
         e["data"] = json.loads(e["data"])
     measurements = [e for e in events if e["kind"] == "measurement" and e["revision"] == g["revision"]]
     g.update(events=events, latest=measurements[-1] if measurements else None,
-             members=[r[0] for r in c.execute("SELECT name FROM users WHERE group_id=?", (gid,))])
+             members=[p['name'] for p in TEACHING.members(c, g)])
     return g
 
 def public_user(who):
@@ -256,10 +267,10 @@ async def logout(request: Request, response: Response):
 def state(request: Request):
     with db() as c:
         who = user(request, c)
-        course = dict(c.execute("SELECT * FROM courses WHERE id=?", (who["course_id"],)).fetchone())
-        course["experiment"] = json.loads(course["experiment"])
-        ids = [who["group_id"]] if who["role"] == "student" else [r[0] for r in c.execute("SELECT id FROM groups WHERE course_id=? ORDER BY name", (who["course_id"],))]
-        return {"user": public_user(who), "course": course, "groups": [group_data(c, who, gid) for gid in ids], "model_configured": bool(os.getenv("LAB_AI_KEY") and os.getenv("LAB_AI_MODEL")), "server_time": now()}
+        course, ids, assignment = TEACHING.scope(c, who, request.query_params.get('assignment_id'), request.query_params.get('class_id'), request.query_params.get('offering_id'))
+        if isinstance(course['experiment'], str):
+            course['experiment'] = json.loads(course['experiment'])
+        return {"user": public_user(who), "course": course, "assignment": assignment, "groups": [group_data(c, who, gid) for gid in ids], "model_configured": bool(os.getenv("LAB_AI_KEY") and os.getenv("LAB_AI_MODEL")), "server_time": now()}
 
 @app.get("/api/health")
 def health():
@@ -277,6 +288,8 @@ async def extract(gid: str, request: Request):
             writable(g, data)
             raw = text_field(data, "text", 2000)
             parsed = parse_reading(raw)
+            if g['experiment'].get('rule_type') == 'observation':
+                parsed['kind'] = 'observation'
             did = uid()
             c.execute("INSERT INTO drafts(id,group_id,actor,revision,raw,parsed,created) VALUES(?,?,?,?,?,?,?)", (did, gid, who["id"], g["revision"], raw, packed(parsed), now()))
             return {"id": did, "raw": raw, "revision": g["revision"], **parsed, "source": "规则提取 · 待本人确认"}
@@ -308,7 +321,7 @@ async def confirm(gid: str, request: Request):
                 fields["reference"] = data.get("reference", "unknown")
                 if fields["reference"] not in ("TP0", "TP1", "TP2", "unknown"):
                     raise HTTPException(422, "参考点无效")
-                result = assess(fields)
+                result = assess(fields, g['experiment'])
                 if (result["warnings"] or parsed["ambiguities"]) and data.get("acknowledged") is not True:
                     raise HTTPException(422, "请核对并勾选异常或歧义提示，再保留原读数")
                 event.update(fields=fields, assessment=result, manually_corrected=any(fields[k] != parsed.get(k) for k in ("vin", "vout")) or fields["reference"] != parsed["reference"])
@@ -351,12 +364,14 @@ async def submit(gid: str, request: Request):
         def run():
             writable(g, data)
             snapshot = group_data(c, who, gid)
-            if not snapshot["latest"]:
+            if not snapshot["latest"] and g['experiment'].get('rule_type') != 'observation':
                 raise HTTPException(422, "当前实物修订还没有测量记录，请先测量")
             conclusion = text_field(data, "conclusion", 3000)
             evidence = [e["id"] for e in snapshot["events"] if e["revision"] == g["revision"] and e["kind"] in ("measurement", "photo", "observation")]
+            if not evidence:
+                raise HTTPException(422, '请先记录实验过程或上传实验照片')
             c.execute("UPDATE groups SET status='submitted' WHERE id=?", (gid,))
-            return add_event(c, who, g, "submission", {"conclusion": conclusion, "evidence": evidence, "measurement_id": snapshot["latest"]["id"]})
+            return add_event(c, who, g, "submission", {"conclusion": conclusion, "evidence": evidence, "measurement_id": snapshot["latest"]["id"] if snapshot['latest'] else None})
         return once(c, who, data, f"submit:{gid}", run)
 
 @app.post("/api/groups/{gid}/message")
@@ -424,6 +439,9 @@ def photo_file(filename: str, request: Request):
     return FileResponse(DATA / "photos" / filename, headers={"Cache-Control": "no-store"})
 
 def rule_guidance(g):
+    package = g.get('experiment', EXPERIMENT)
+    if package.get('rule_type') == 'observation':
+        return '请围绕“' + package.get('objective', '实验目标') + '”记录观察、条件和证据，再说明这些证据如何支持结论。当前实验采用观察记录方式，数值判据待教师补充。'
     latest = g["latest"]
     if not latest:
         return "当前修订还没有测量依据。请先记录 TP1 对 TP0 的供电电压，再记录 TP2 对 TP0 的输出电压，并保留数值与单位。"
@@ -431,10 +449,10 @@ def rule_guidance(g):
     code = result["code"]
     prefix = f"依据测量记录 {latest['id'][:8]}（修订 {g['revision']}）：{result['label']}。"
     prompts = {
-        "pass": "请用两只电阻相等的分压关系解释预期值，并比较实测偏差。数值符合判据还需要结合接线和过程记录复核。",
+        "pass": "请用实验模板中的电阻参数和分压关系解释预期值，并比较实测偏差。数值符合判据还需要结合接线和过程记录复核。",
         "low": "先核对黑表笔是否接 TP0、红表笔是否接 TP2，再补测供电。若仍偏低，断电后核对两只电阻和连接；单个输出值不能确定是哪只电阻或接线出错。",
         "high": "先核对参考点和被测节点，再复测供电。若仍偏高，断电核对电阻和连接，分别提供证据后再判断原因。",
-        "supply": "请先核对电源设定及 TP1 对 TP0 的实测供电，使其回到 3.20–3.40 V 范围后复测输出。",
+        "supply": f"请先核对电源设定及 TP1 对 TP0 的实测供电，使其回到 {package.get('supply_min_v',3.2)}–{package.get('supply_max_v',3.4)} V 范围后复测输出。",
         "verify": "请先核对参考点、表笔方向、单位与量程。负数和超范围读数均已原样保留，不能直接用于当前判据。",
         "incomplete": "请补充缺失或无法读出的供电、输出及参考点；OL 表示未得到有效数值，不能当作零。",
     }
@@ -448,17 +466,18 @@ async def assist(request: Request):
         who = user(request, c)
         if data.get("group_id"):
             groups = [group_data(c, who, data["group_id"])]
-        elif who["role"] == "teacher":
-            groups = [group_data(c, who, r[0]) for r in c.execute("SELECT id FROM groups WHERE course_id=? ORDER BY name", (who["course_id"],)).fetchall()]
+            experiment = groups[0]['experiment']
         else:
-            groups = [group_data(c, who, who["group_id"])]
+            course, ids, assignment = TEACHING.scope(c, who, data.get('assignment_id'), data.get('class_id'), data.get('offering_id'))
+            groups = [group_data(c, who, gid) for gid in ids]
+            experiment = json.loads(course['experiment']) if isinstance(course['experiment'], str) else course['experiment']
     evidence = []
     for g in groups:
         for e in g["events"]:
             evidence.append({"id": e["id"], "group": g["name"], "revision": e["revision"], "kind": e["kind"], "data": e["data"]})
     # Bounded evidence, no credentials, hidden fault labels or other courses sent to a model.
-    context = {"experiment": EXPERIMENT, "groups": [{k: g[k] for k in ("id", "name", "revision", "status", "help", "latest")} for g in groups], "events": evidence[-30:]}
-    fallback = "\n\n".join(f"{g['name']}：{rule_guidance(g)}" for g in groups)
+    context = {"experiment": experiment, "groups": [{k: g[k] for k in ("id", "name", "revision", "status", "help", "latest")} for g in groups], "events": evidence[-30:]}
+    fallback = "\n\n".join(f"{g['name']}：{rule_guidance(g)}" for g in groups) or '当前范围尚无已确认的小组记录。请先发布任务并完成分组，再根据实验目标记录证据。'
     if who["role"] == "teacher" and re.search("反馈|复核", question):
         feedback = []
         for g in groups:
@@ -487,6 +506,9 @@ async def assist(request: Request):
         except Exception:
             reason = "模型暂不可用，已切换为实验规则建议；测量记录不受影响。"
     return {"text": answer, "mode": mode, "notice": reason, "evidence": [{"id": e["id"], "group": e["group"], "kind": e["kind"], "revision": e["revision"]} for e in evidence[-30:]], "generated_at": now()}
+
+from teaching import install
+TEACHING = install(app, globals())
 
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
