@@ -1,0 +1,23 @@
+{
+  "deployed_at_utc": "2026-11-25 11:57:50 UTC",
+  "server": "10.31.26.22",
+  "ssh_user": "zlzhou",
+  "url": "http://10.31.26.22:8766/",
+  "release": "20261125115228",
+  "service": "ai-lab-assistant.service",
+  "service_manager": "systemd --user",
+  "root": "/home/zlzhou/apps/ai-lab-assistant",
+  "data_directory": "/home/zlzhou/apps/ai-lab-assistant/shared/data",
+  "auto_start_enabled": true,
+  "user_linger_enabled": true,
+  "model_mode": "rules",
+  "verification": {
+    "backend_tests": 13,
+    "live_deployment_checks": 19,
+    "frontend_runtime_checks": "passed including intranet HTTP",
+    "remote_pilot_accounts": 3,
+    "sqlite_integrity": "ok",
+    "temporary_test_data_removed": true,
+    "browser_visual_check": "not performed"
+  }
+}

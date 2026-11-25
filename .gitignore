@@ -1,0 +1,30 @@
+# Runtime data and user uploads
+**/data/
+**/backups/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Credentials and environment-specific secrets
+.env
+.env.*
+!.env.example
+service.env
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Python, editor, and OS caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+*.log
+
+# Intermediate document builds, render checks and scratch files
+/tmp/

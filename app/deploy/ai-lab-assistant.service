@@ -1,0 +1,19 @@
+[Unit]
+Description=Zhi Shi Yan AI laboratory teaching assistant
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/zlzhou/apps/ai-lab-assistant/current
+EnvironmentFile=/home/zlzhou/apps/ai-lab-assistant/shared/service.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/zlzhou/apps/ai-lab-assistant/.venv/bin/python /home/zlzhou/apps/ai-lab-assistant/current/run.py
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
