@@ -13,15 +13,21 @@ const event={id:'a'.repeat(32),group_id:'group-1',revision:1,kind:'measurement',
 const group={id:'group-1',name:'01 组',revision:1,status:'working',help:1,members:['林同学'],events:[event],latest:event};
 const data={user:{id:'student1',role:'student',name:'林同学'},model_configured:false,groups:[group],course:{title:'电子电路基础',experiment:{version:'0.1',title:'电阻分压实验',objective:'验证分压',points:{TP0:'参考地',TP1:'供电',TP2:'输出'},formula:'Vout = Vin/2',steps:['预测','测量'],safety:'先断电再改线'}}};
 run('S.data='+JSON.stringify(data)+';S.gid="group-1"');
-for(const view of ['lab','records','submit']){run(`S.view='${view}';render()`);assert.ok(root.innerHTML.includes('知实验'));assert.ok(!root.innerHTML.includes('undefined'));assert.ok(!root.innerHTML.includes('<script>alert'))}
+for(const view of ['lab','records','submit']){run(`S.view='${view}';render()`);assert.ok(root.innerHTML.includes('实验助教'));assert.ok(root.innerHTML.includes('x-phone'));assert.ok(root.innerHTML.includes('x-phonenav'));assert.ok(!root.innerHTML.includes('student-layout'));assert.ok(!root.innerHTML.includes('undefined'));assert.ok(!root.innerHTML.includes('<script>alert'))}
 run('S.draft='+JSON.stringify({id:'draft1',raw:'供电3.30V，输出80mV',revision:1,source:'规则提取',...parsed})+';S.view="lab";render()');
 assert.ok(root.innerHTML.includes('尚未计入测量'));
 assert.ok(root.innerHTML.includes('value="80"'));
+assert.ok(root.innerHTML.includes('x-extracted'));
+assert.ok(root.innerHTML.includes('0.08 V'));
+assert.ok(root.innerHTML.includes('correction-details'));
+assert.ok(!root.innerHTML.includes('id="acknowledged"'),'Normal readings should not require an exception checkbox');
 run('S.data.user.role="teacher";S.draft=null');
-for(const view of ['overview','group','assist','reports','experiment']){run(`S.view='${view}';render()`);assert.ok(root.innerHTML.includes('知实验'));assert.ok(!root.innerHTML.includes('undefined'));assert.ok(!root.innerHTML.includes('<script>alert'))}
+for(const view of ['overview','group','assist','reports','experiment']){run(`S.view='${view}';render()`);assert.ok(root.innerHTML.includes('实验助教'));assert.ok(root.innerHTML.includes('x-layout'));assert.ok(root.innerHTML.includes('x-side'));assert.ok(!root.innerHTML.includes('statlabel'));assert.ok(!root.innerHTML.includes('undefined'));assert.ok(!root.innerHTML.includes('<script>alert'))}
 for(const modal of ['instructions','revision','help','photo']){run(`S.modal='${modal}';render()`);assert.ok(root.innerHTML.includes('role="dialog"'))}
 run('S.modal=null;S.data.groups[0].revision=2;S.data.groups[0].latest=null;S.view="group";render()');
 assert.ok(root.innerHTML.includes('改线后需重新测量供电和输出'));
+const approved=fs.readFileSync('design/approved-ui-v0.2.html','utf8').split('<style>')[1].split('</style>')[0];
+assert.ok(fs.readFileSync('static/approved-ui.css','utf8').includes(approved),'Approved prototype component styles must remain available for comparison');
 async function interactionChecks(){
   await new Promise(setImmediate); // Let initial authentication probe finish.
   run('S.data='+JSON.stringify(data)+';S.gid="group-1";S.modal=null;S.view="lab";S.busy=false;render()');
@@ -48,12 +54,26 @@ async function interactionChecks(){
   await assert.rejects(run("api('/groups/group-1/message',command({text:'测试重试'}))"));
   await run("api('/groups/group-1/message',command({text:'测试重试'}))");
   assert.equal(calls[0].nonce,calls[1].nonce,'Lost response retries must reuse operation id');
+  run('S.data.user.role="teacher";S.view="overview"');
+  await run("action('chart:stages')");run('render()');
+  assert.ok(root.innerHTML.includes('barlist'));
+  await run("action('prepare-feedback')");run('render()');
+  assert.ok(root.innerHTML.includes('x-copilot'));
+  assert.ok(run('S.question').includes('反馈'));
+  run('S.data.user.role="student";S.view="lab";S.raw="为什么输出偏低？";S.online=true');
+  context.fetch=async path=>({ok:true,status:200,json:async()=>path.endsWith('/extract')?{id:'question',kind:'observation'}:{text:'请先核对参考点。',mode:'rules',notice:'规则建议',evidence:[]}});
+  await run('extractText()');
+  assert.equal(run('S.draft'),null,'A direct question must not masquerade as a confirmed measurement');
+  assert.equal(run('S.lastQuestion'),'为什么输出偏低？');
+  assert.equal(run('S.assist.mode'),'rules');
+  run('render()');
+  assert.ok(root.innerHTML.includes('本次提问 · 不计入测量'));
   context.crypto=webcrypto;
   assert.equal(await run("operationFingerprint('record')"),require('node:crypto').createHash('sha256').update('record').digest('hex'));
   context.document.querySelector=s=>s==='#app'?root:s==='#toast'?toast:s==='#message'?{value:'已发送的旧文字'}:null;
   context.fetch=async path=>({ok:true,status:200,json:async()=>path.endsWith('/state')?updated:{saved:true}});
   await run("S.busy=true;S.message='已发送的旧文字';action('send-message')");
   assert.equal(run('S.message'),'','Refresh must not restore a successfully sent message into the composer');
-  console.log('PASS: 8 screens, 4 dialogs, escaping, units, revision state, typing-safe polling, HTTP/HTTPS retry id, sent-message clearing');
+  console.log('PASS: approved UI structure/styles, 8 screens, 4 dialogs, unit cards, direct question, teacher controls, safe polling, HTTP/HTTPS retries');
 }
 interactionChecks().catch(e=>{console.error(e);process.exitCode=1});
