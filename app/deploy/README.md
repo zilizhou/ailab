@@ -43,7 +43,26 @@ systemctl --user start ai-lab-assistant.service
 
 试用账号与本地版相同：`teacher`、`student1`、`student2`，密码均为 `Lab2026!`。两个学生账号分别属于两个小组。同一浏览器共享登录，需要同时体验两端时请使用不同浏览器或无痕窗口。
 
-模型配置写入 `shared/service.env` 中的 `LAB_AI_BASE_URL`、`LAB_AI_MODEL`、`LAB_AI_KEY`，然后重启服务。无需改前端代码，不能将真实密钥写入版本文件。本次部署未配置外部模型，保持规则助教模式。
+模型配置写入服务器的 `shared/service.env`。以阿里云百炼北京地域的 `qwen-plus` 文字助教为例：
+
+```ini
+LAB_AI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LAB_AI_MODEL=qwen-plus
+LAB_AI_KEY=<在服务器上填写业务空间的实际 API Key>
+```
+
+按[阿里云百炼兼容接口文档](https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope)使用与密钥所属地域一致的地址，优先采用业务空间专属域名。`LAB_AI_BASE_URL` 填到 `/compatible-mode/v1`。密钥只存服务器、文件权限设为 `600`。
+
+写入配置后，在服务器用和正式助教相同的客户端先做联通测试。下列命令只使用一条示例文本，不读取实验数据库，也不显示密钥或服务方响应正文：
+
+```sh
+systemd-run --user --wait --pipe --collect \
+  -p EnvironmentFile=/home/zlzhou/apps/ai-lab-assistant/shared/service.env \
+  /home/zlzhou/apps/ai-lab-assistant/.venv/bin/python \
+  /home/zlzhou/apps/ai-lab-assistant/current/model_client.py
+```
+
+测试成功后重启 `ai-lab-assistant.service` 以读取配置，并用试用实验验证学生提示和教师草稿。模型不可用时，助教仍提供规则建议。电路图片和视频理解需单独接入多模态模型。
 
 服务器使用独立数据目录，代码更新不会覆盖数据库与照片。现有本地数据库没有实验记录，因此服务器从空白实验过程开始；不迁移本地登录会话。
 

@@ -1,5 +1,6 @@
 """Acceptance tests use an isolated SQLite database, never the teaching pilot's records."""
 import base64
+import json
 import os
 import tempfile
 import unittest
@@ -170,14 +171,26 @@ class TeachingWorkflow(unittest.TestCase):
 
     def test_model_adapter_receives_scoped_evidence_and_returns_draft(self):
         self.confirm(self.draft())
-        response=server.httpx.Response(200,json={'choices':[{'message':{'content':'请先补测 TP1 对 TP0 的电压。'}}]},request=server.httpx.Request('POST','https://example.test/chat/completions'))
-        with patch.dict(os.environ,{'LAB_AI_KEY':'test-secret','LAB_AI_MODEL':'test-model'}),patch.object(server.httpx.AsyncClient,'post',new_callable=AsyncMock,return_value=response) as post:
+        endpoint='https://dashscope.aliyuncs.com/compatible-mode/v1'
+        with server.db(write=True) as c:
+            c.execute("UPDATE events SET data=json_set(data, '$.participants', json(?)) WHERE id=?",
+                      (json.dumps(['internal-student-id']), self.group()['latest']['id']))
+        response=server.httpx.Response(200,json={'choices':[{'message':{'content':'请先补测 TP1 对 TP0 的电压。'}}]},request=server.httpx.Request('POST',endpoint+'/chat/completions'))
+        with patch.dict(os.environ,{'LAB_AI_KEY':'test-secret','LAB_AI_MODEL':'qwen-plus','LAB_AI_BASE_URL':endpoint}),patch.object(server.httpx.AsyncClient,'post',new_callable=AsyncMock,return_value=response) as post:
             result=self.s1.post('/api/assist',json={'question':'下一步检查什么？'}).json()
         self.assertEqual(result['mode'],'model')
         self.assertNotIn('test-secret',str(result))
+        self.assertEqual(post.call_args.args[0],endpoint+'/chat/completions')
         payload=post.call_args.kwargs['json']
-        self.assertIn('group-1',payload['messages'][1]['content'])
-        self.assertNotIn('group-2',payload['messages'][1]['content'])
+        self.assertEqual(payload['model'],'qwen-plus')
+        prompt=payload['messages'][1]['content']
+        self.assertIn('group-1',prompt)
+        self.assertNotIn('group-2',prompt)
+        self.assertNotIn('internal-student-id',prompt)
+        latest=json.loads(prompt)['evidence']['groups'][0]['latest']
+        self.assertNotIn('author',latest)
+        self.assertNotIn('actor',latest)
+        self.assertEqual(latest['data']['assessment'],self.group()['latest']['data']['assessment'])
         self.assertEqual(len(self.group()['events']),1,'Model draft must not send a message or mutate measurements')
 
 class MeasurementSemantics(unittest.TestCase):
