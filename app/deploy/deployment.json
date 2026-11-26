@@ -1,9 +1,9 @@
 {
-  "deployed_at_utc": "2026-11-26 01:58:43 UTC",
+  "deployed_at_utc": "2026-11-26 02:02:42 UTC",
   "server": "10.31.26.22",
   "ssh_user": "zlzhou",
   "url": "http://10.31.26.22:8766/",
-  "release": "20261126015751",
+  "release": "20261126020142",
   "service": "ai-lab-assistant.service",
   "service_manager": "systemd --user",
   "root": "/home/zlzhou/apps/ai-lab-assistant",
@@ -22,14 +22,15 @@
     "frontend_context_switch": "stale responses discarded; roster-only updates reflected",
     "student_navigation": "bottom tabs across course, task, grouping, experiment, conclusion, records and profile pages; returning from profile reopens the task list; frontend checks passed locally and on server",
     "backend_tests_scope": "26 backend and 28 live teaching checks from previous release; current update changes frontend only",
-    "student_experiment_group": "group name, headcount, member names, and access to group details verified with live demo student data; regression check covers unsent text on return"
+    "student_experiment_group": "group name, headcount, member names, and access to group details verified with live demo student data; regression check covers unsent text on return",
+    "student_task_group": "task card shows the student group for that assignment; verified with two separate schemes in regression and with the live demo student"
   },
-  "previous_release": "20261126014449",
+  "previous_release": "20261126015751",
   "ui_version": "0.2",
   "ui_reference": "design/approved-ui-v0.2.html",
   "project": "验知有道——面向实验全过程的多模态智能助教",
   "platform_version": "0.2-stage1",
   "schema_version": 2,
-  "asset_version": "teaching07",
+  "asset_version": "teaching08",
   "database_backup": "shared/backups/pre-teaching-final-20261125150740.sqlite3"
 }

@@ -82,6 +82,20 @@ async function main(){
   assert.ok(experimentTab);
   await run(`action(${JSON.stringify(experimentTab[1])})`);run('render()');
   assert.equal(run('S.view'),'tasks','The experiment tab must return to the task list after visiting My account');
+  assert.match(root.innerHTML,/待选组/);
+  const secondScheme={...scheme,id:'scheme2',teams:[
+    {...team,id:'team2',scheme_id:'scheme2',name:'测量<二组>',mine:true},
+    {...team,id:'team3',scheme_id:'scheme2',name:'另一个小组',mine:false},
+  ]};
+  const secondTask={...task,id:'assignment2',title:'复测任务',targets:[{...task.targets[0],scheme_id:'scheme2'}],my_runs:['run2']};
+  run(`const schemes=teachingOffering().classes[0].schemes;
+    schemes[0].teams[0].mine=true; teachingAssignment().my_runs=['run1'];
+    schemes.push(${JSON.stringify(secondScheme)}); T.catalog.assignments.push(${JSON.stringify(secondTask)}); render()`);
+  const taskCards=[...root.innerHTML.matchAll(/<section class="[^"]*student-task-card[^"]*">([\s\S]*?)<\/section>/g)].map(match=>match[1]);
+  assert.equal(taskCards.length,2);
+  assert.match(taskCards[0],/小组：自主小组/);
+  assert.match(taskCards[1],/小组：测量&lt;二组&gt;/);
+  assert.doesNotMatch(taskCards[1],/自主小组|另一个小组/);
   run('S.view="teams";T.catalog.offerings[0].classes[0].schemes[0].teams[0].mine=true;render()');
   assert.ok(root.innerHTML.includes('进入实验'));assert.ok(root.innerHTML.includes('退出小组'));
   run('S.modal=null;S.view="lab";S.data.course.experiment.rule_type="observation";render()');

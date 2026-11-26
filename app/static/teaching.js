@@ -88,10 +88,27 @@ function teachingTasks(){
   const o=teachingOffering();if(!o)return '<div class="empty">请先选择学期课程。</div>';
   return `${heading('实验任务',o.title+' · '+o.term,B('发布实验','manage:publish','primary','file',o.archived?'disabled':''))}<div class="stack">${teachingAssignments().map(a=>`<section class="panel"><div class="panelhead"><h2>${E(a.title)}</h2>${P(a.status==='published'?'已发布':'已结束',a.status==='published'?'blue':'')}</div><p class="small muted">${a.targets.map(t=>E(t.class_name)).join('、')} · 实验版本 ${E(a.experiment.version)}</p><p class="small muted">开放 ${teachingWhen(a.opens_at)} · 截止 ${teachingWhen(a.closes_at)}</p><div class="actions" style="margin-top:14px">${B('查看实验进展','open-assignment:'+a.id,'primary')}${B('分组管理','assignment-groups:'+a.id,'btn')}${B('调整时间或结束任务','schedule:'+a.id,'link','',o.archived?'disabled':'')}</div></section>`).join('')||'<section class="panel empty">先准备实验内容和教学班，再发布第一项任务。</section>'}</div>`;
 }
+function studentTaskCard(assignment){
+  const hasRun=assignment.my_runs.length>0;
+  const teams=assignment.targets.flatMap(({class_id,scheme_id})=>
+    teachingClass(class_id)?.schemes.find(s=>s.id===scheme_id)?.teams||[]
+  );
+  const names=teams.filter(team=>team.mine).map(team=>team.name);
+  const groupLabel=names.length?'小组：'+names.join('、'):'已选组';
+  return `<section class="panel student-task-card">
+    <div class="panelhead"><h2>${E(assignment.title)}</h2>${hasRun?P(groupLabel,'blue'):P('待选组')}</div>
+    <p>${E(assignment.experiment.objective)}</p>
+    <p class="chart-note">截止 ${teachingWhen(assignment.closes_at)}</p>
+    <div class="actions" style="margin-top:14px">
+      ${B(hasRun?'进入实验':'选组并开始','student-task:'+assignment.id,'primary')}
+      ${hasRun?B('查看分组','student-groups:'+assignment.id,'link'):''}
+    </div>
+  </section>`;
+}
 function teachingStudentPortal(){
   if(S.view==='teams')return teachingGroups();
   if(S.view==='tasks'&&teachingOffering()){
-    const o=teachingOffering();return `${B('我的课程','view:courses','link')}<h1>${E(o.title)}</h1><p class="small muted" style="margin:8px 0 18px">${E(o.term)} · ${o.classes.map(c=>E(c.name)).join('、')}</p>${teachingAssignments().map(a=>`<section class="panel"><div class="panelhead"><h2>${E(a.title)}</h2>${P(a.my_runs.length?'已选组':'待选组',a.my_runs.length?'blue':'')}</div><p>${E(a.experiment.objective)}</p><p class="chart-note">截止 ${teachingWhen(a.closes_at)}</p><div class="actions" style="margin-top:14px">${B(a.my_runs.length?'进入实验':'选组并开始','student-task:'+a.id,'primary')}${a.my_runs.length?B('查看分组','student-groups:'+a.id,'link'):''}</div></section>`).join('')||'<div class="empty">老师还没有向本班发布实验。</div>'}`;
+    const o=teachingOffering();return `${B('我的课程','view:courses','link')}<h1>${E(o.title)}</h1><p class="small muted" style="margin:8px 0 18px">${E(o.term)} · ${o.classes.map(c=>E(c.name)).join('、')}</p>${teachingAssignments().map(studentTaskCard).join('')||'<div class="empty">老师还没有向本班发布实验。</div>'}`;
   }
   return `<div class="panelhead"><h1>我的课程</h1>${B('加入班级','manage:enroll','link')}</div><p class="small muted" style="margin-bottom:18px">选择本学期课程，查看任务并与同伴开展实验。</p>${T.catalog.offerings.map(o=>`<section class="panel"><div class="panelhead"><h2>${E(o.title)}</h2>${o.archived?P('已归档'):P(o.classes.length+' 个教学班','blue')}</div><p class="small muted">${E(o.term)} · ${o.classes.map(c=>E(c.name)).join('、')}</p><div style="margin-top:14px">${B('查看实验任务','open-offering:'+o.id,'primary')}</div></section>`).join('')||'<section class="panel empty">还未加入教学班，请向老师获取班级邀请码。</section>'}`;
 }
