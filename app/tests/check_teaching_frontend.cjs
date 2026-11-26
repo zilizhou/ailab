@@ -72,6 +72,8 @@ async function main(){
   assert.ok(!root.innerHTML.includes('undefined'));
   await run("action('view:records')");run('render()');
   assert.ok(root.innerHTML.includes('查看我的课程'),'No-group navigation must have a usable empty state');
+  await run("action('view:lab')");run('render()');
+  assert.match(root.innerHTML,/data-action="view:teams"[^>]*>前往选组/);
   run('S.data.groups='+JSON.stringify([group]));
   await run("action('view:tasks')");run('render()');
   assert.ok(root.innerHTML.includes('分压实验任务'));
@@ -85,6 +87,17 @@ async function main(){
   run('S.modal=null;S.view="lab";S.data.course.experiment.rule_type="observation";render()');
   assert.ok(root.innerHTML.includes('实验观察与证据'));
   assert.ok(!root.innerHTML.includes('供电 3.30 V'),'General observation experiments must not inherit divider measurement examples');
+  run('current().members.push("陈同学<乙>");S.raw="尚未提交的实验观察";render()');
+  const groupCard=root.innerHTML.match(/<section class="[^"]*student-experiment-group[^"]*">([\s\S]*?)<\/section>/)?.[1];
+  assert.ok(groupCard,'The experiment page must show the current group');
+  assert.match(groupCard,/自主小组/);
+  assert.match(groupCard,/2 人/);
+  assert.match(groupCard,/林同学、陈同学&lt;乙&gt;/);
+  assert.match(groupCard,/data-action="view:teams"[^>]*>查看分组/);
+  await run("action('view:teams')");run('render()');
+  assert.match(root.innerHTML,/data-action="view:lab"[^>]*>进入实验/);
+  await run("action('view:lab')");run('render()');
+  assert.ok(root.innerHTML.includes('尚未提交的实验观察'),'Checking the current group must preserve unsent experiment text');
   run('S.data=null;T.authMode="register";render()');assert.ok(root.innerHTML.includes('register-form'));
   assert.ok(!root.innerHTML.includes('x-phonenav'));
   console.log('PASS: course/class/template/task pages, 17 dialogs, publication preview/confirmation, student grouping/registration, observation workspace, escaping');
