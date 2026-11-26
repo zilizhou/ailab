@@ -29,7 +29,7 @@
 #lab-v2 .sync-foot .connectionbar{margin:0;font-size:12px;justify-content:space-between}
 #lab-v2 .sync-foot .connection{font-size:12px}
 #lab-v2 .student-stage{min-height:100vh;border:0;border-radius:0;padding:24px;background-color:#eef3fa;background-image:radial-gradient(#d4dfef .8px,transparent .8px);background-size:16px 16px}
-#lab-v2 .x-phone{display:flex;flex-direction:column;width:420px}
+#lab-v2 .x-phone{display:flex;flex-direction:column;width:420px;overflow:clip}
 #lab-v2 .x-phonebody{flex:1;min-width:0}
 #lab-v2 .x-phonehead .x-link{font-size:12px;min-height:30px}
 #lab-v2 .x-phonebody .x-panelhead{gap:8px}

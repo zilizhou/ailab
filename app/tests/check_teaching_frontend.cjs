@@ -51,6 +51,12 @@ async function main(){
   run('S.busy=false;S.modal=null;S.data.user.role="student";T.catalog.user.role="student";T.catalog.user.id="student1";T.catalog.assignments[0].my_runs=[]');
   for(const view of ['courses','tasks','teams','lab','records','submit','mine']){
     run(`S.view='${view}';render()`);assert.ok(root.innerHTML.includes('x-phone'),view);assert.ok(!root.innerHTML.includes('undefined'),view);
+    const nav=root.innerHTML.match(/<nav class="x-phonenav"[^>]*>(.*?)<\/nav>/)?.[1];
+    assert.ok(nav,`Bottom navigation is missing on ${view}`);
+    const tabs=[...nav.matchAll(/<button([^>]*)>.*?<\/svg>([^<]+)<\/button>/g)];
+    assert.deepEqual(tabs.map(tab=>tab[2]),['实验','记录','我的'],view);
+    const activeLabel={records:'记录',mine:'我的'}[view]||'实验';
+    assert.deepEqual(tabs.filter(tab=>tab[1].includes('aria-current="page"')).map(tab=>tab[2]),[activeLabel],view);
   }
   assert.ok(root.innerHTML.includes('<h1>我的</h1>'));
   assert.ok(root.innerHTML.includes('自主小组'));
@@ -67,12 +73,20 @@ async function main(){
   await run("action('view:records')");run('render()');
   assert.ok(root.innerHTML.includes('查看我的课程'),'No-group navigation must have a usable empty state');
   run('S.data.groups='+JSON.stringify([group]));
+  await run("action('view:tasks')");run('render()');
+  assert.ok(root.innerHTML.includes('分压实验任务'));
+  await run("action('view:mine')");run('render()');
+  const experimentTab=root.innerHTML.match(/<nav class="x-phonenav"[^>]*><button[^>]* data-action="([^"]+)"/);
+  assert.ok(experimentTab);
+  await run(`action(${JSON.stringify(experimentTab[1])})`);run('render()');
+  assert.equal(run('S.view'),'tasks','The experiment tab must return to the task list after visiting My account');
   run('S.view="teams";T.catalog.offerings[0].classes[0].schemes[0].teams[0].mine=true;render()');
   assert.ok(root.innerHTML.includes('进入实验'));assert.ok(root.innerHTML.includes('退出小组'));
   run('S.modal=null;S.view="lab";S.data.course.experiment.rule_type="observation";render()');
   assert.ok(root.innerHTML.includes('实验观察与证据'));
   assert.ok(!root.innerHTML.includes('供电 3.30 V'),'General observation experiments must not inherit divider measurement examples');
   run('S.data=null;T.authMode="register";render()');assert.ok(root.innerHTML.includes('register-form'));
+  assert.ok(!root.innerHTML.includes('x-phonenav'));
   console.log('PASS: course/class/template/task pages, 17 dialogs, publication preview/confirmation, student grouping/registration, observation workspace, escaping');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});

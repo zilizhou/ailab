@@ -1,7 +1,7 @@
 'use strict';
 const $ = s => document.querySelector(s);
 const root = $('#app');
-const S = {data:null, view:'overview', gid:null, draft:null, raw:'', conclusion:'', message:'', feedback:'', assist:null, question:'', assistTarget:'', modal:null, error:'', online:true, busy:false, loginRole:'student', loginUser:'student1', loginPassword:'Lab2026!', pending:[], revisionReason:'', helpText:'', photoCaption:''};
+const S = {data:null, view:'overview', studentExperimentView:'', gid:null, draft:null, raw:'', conclusion:'', message:'', feedback:'', assist:null, question:'', assistTarget:'', modal:null, error:'', online:true, busy:false, loginRole:'student', loginUser:'student1', loginPassword:'Lab2026!', pending:[], revisionReason:'', helpText:'', photoCaption:''};
 const paths = {lab:'M7 3v5l-4 9a3 3 0 0 0 3 4h12a3 3 0 0 0 3-4l-4-9V3M5 3h14M7 14h10',spark:'m12 3 2.7 6.3L21 12l-6.3 2.7L12 21l-2.7-6.3L3 12l6.3-2.7L12 3',grid:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',chart:'M4 3v17h17M7 14l4-5 4 3 5-7',book:'M4 4h6l2 2 2-2h6v16h-6l-2 1-2-1H4V4M12 6v15',check:'m5 12 4 4L19 6',send:'m3 3 18 9-18 9 4-9-4-9M7 12h14',chat:'M21 11a8 8 0 0 1-8 8H8l-5 3V11a9 9 0 0 1 18 0',user:'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M4 21v-2a8 8 0 0 1 16 0v2',users:'M15 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0M3 21v-2a8 8 0 0 1 14-5M20 21v-3a5 5 0 0 0-3-4M18 3a4 4 0 0 1 0 8',file:'M5 3h9l5 5v13H5V3M14 3v6h5M8 13h8M8 17h5',clock:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M12 7v5l3 2',camera:'M3 7h4l2-3h6l2 3h4v14H3V7M16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0',close:'m6 6 12 12M6 18 18 6',back:'m14 5-7 7 7 7M7 12h14',help:'M9 8a3 3 0 1 1 5 2c-2 1-2 2-2 4M12 18h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',refresh:'M20 4v5h-5M4 20v-5h5M5 8a8 8 0 0 1 13-4l2 5M4 15l2 5a8 8 0 0 0 13-4',circuit:'M3 6h5l2-3 4 6 2-3h5M3 18h5l2-3 4 6 2-3h5M3 6v12M21 6v12'};
 const I = name => `<svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="${paths[name]||paths.lab}"/></svg>`;
 const E = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -105,7 +105,18 @@ function shell(){
 }
 function connection(){return `<div class="connectionbar"><span class="connection ${S.online?'':'off'}">${S.online?'已连接 · 记录已同步至服务器':'连接中断 · 输入可暂存本机'}</span><span class="muted">教学试用 · ${S.data.model_configured?'模型已配置':'规则助教模式'}</span></div>`}
 function sidebar(){return `<aside class="x-side"><span class="x-sidelabel">教学空间</span>${[['overview','课堂总览','grid'],['assist','AI 助教','spark'],['reports','实验提交','file'],['experiment','实验模板','lab']].map(([id,l,i])=>`<button class="${S.view===id||(id==='overview'&&S.view==='group')?'on':''}" data-action="view:${id}">${I(i)}${l}</button>`).join('')}<div class="x-sidefoot">电子电路基础<br>教学试用班<br><br>2026 秋季学期</div></aside>`}
-function studentNav(){const active=S.view==='submit'?'lab':S.view;return `<nav class="x-phonenav" aria-label="学生端导航">${[['lab','实验','chat'],['records','记录','chart'],['mine','我的','user']].map(([id,l,i])=>`<button class="${active===id?'on':''}" ${active===id?'aria-current="page"':''} data-action="view:${id}">${I(i)}${l}</button>`).join('')}</nav>`}
+function studentSection(view){return ['records','mine'].includes(view)?view:'lab'}
+function navigateStudent(view){
+  if(studentSection(S.view)==='lab'&&studentSection(view)!=='lab')S.studentExperimentView=S.view;
+  S.view=view;
+}
+function studentNav(){
+  const active=studentSection(S.view);
+  const experimentView=active==='lab'?S.view:S.studentExperimentView;
+  const experimentTarget=['courses','tasks','teams'].includes(experimentView)?experimentView:'lab';
+  const tabs=[['lab','实验','chat',experimentTarget],['records','记录','chart','records'],['mine','我的','user','mine']];
+  return `<nav class="x-phonenav" aria-label="学生端导航">${tabs.map(([section,label,icon,view])=>`<button class="${active===section?'on':''}" ${active===section?'aria-current="page"':''} data-action="view:${view}">${I(icon)}${label}</button>`).join('')}</nav>`;
+}
 function heading(title,description,actions=''){return `<div class="heading"><div><h1>${E(title)}</h1><p>${E(description)}</p></div>${actions}</div>`}
 function teacherView(){if(typeof T!=='undefined'&&T.catalog&&teachingViews.includes(S.view))return teachingView();if(S.view==='group'&&!current())return '<div class="empty">请先选择有小组记录的实验任务。</div>';return ({overview:overview,group:groupView,assist:assistPage,reports:reports,experiment:experimentPage}[S.view]||overview)()}
 function studentView(){if(S.view==='mine')return studentMine();if(!current())return `<section class="panel empty"><p>选择课程和实验任务，完成分组后开始实验。</p>${B('查看我的课程','view:courses','primary')}</section>`;return ({lab:studentLab,records:studentRecords,submit:studentSubmit}[S.view]||studentLab)()}
@@ -210,7 +221,7 @@ async function action(name){
   if(a==='apply-extract')return;
   if(a==='set-reference'){if(S.draft)S.draft.reference='TP0';return}
   if(['prepare-guidance','prepare-feedback','common','template-ai'].includes(a)){S.view='assist';S.assist=null;S.assistTarget='';S.question={'prepare-guidance':'给待帮助的小组准备补测指导，列出已有依据和仍需区分的原因。','prepare-feedback':'请依据已提交的实验结论和测量，起草教师反馈。','common':'请根据已记录问题，准备全班共性讲解，区分已有证据和待核对假设。','template-ai':'请为'+S.data.course.experiment.title+'准备课前引导、反思问题与评价关注点。'}[a];return}
-  if(a==='view'){S.view=v;S.error='';S.assist=null;return}
+  if(a==='view'){if(isTeacher())S.view=v;else navigateStudent(v);S.error='';S.assist=null;return}
   if(a==='group'){S.gid=v;S.view='group';S.message='';S.feedback='';S.assist=null;return}
   if(a==='close'){S.modal=null;S.error='';return}
   if(['instructions','revision','help','photo'].includes(a)){S.modal=a;S.error='';return}
@@ -242,7 +253,7 @@ async function action(name){
   if(a==='use-assist'){if(!S.assistTarget)throw new Error('请先选择一个具体小组');S.gid=S.assistTarget;S.message=S.assist.text;S.view='group';return}
   if(a==='source'){
     const g=S.data.groups.find(g=>g.events.some(e=>e.id===v));if(!g)return;
-    S.gid=g.id;S.view=isTeacher()?'group':'records';render();setTimeout(()=>{const el=$('#event-'+v);el?.scrollIntoView({behavior:'smooth',block:'center'});el?.classList.add('flash');el?.focus({preventScroll:true})},100);return;
+    S.gid=g.id;if(isTeacher())S.view='group';else navigateStudent('records');render();setTimeout(()=>{const el=$('#event-'+v);el?.scrollIntoView({behavior:'smooth',block:'center'});el?.classList.add('flash');el?.focus({preventScroll:true})},100);return;
   }
 }
 root.addEventListener('click',async event=>{
