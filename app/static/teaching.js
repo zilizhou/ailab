@@ -172,7 +172,10 @@ function teachingDialog(){
     case 'auto-assign':title='自动分配未选组学生';body='<p>系统将只分配当前方案中尚未选组的学生，按人数上下限建立新组。已有分组保留。</p>';button='确认分配';break;
     case 'scheme-deadline':title='调整选组截止';body='<p>同一分组方案可能被多个实验任务复用，此调整对使用该方案的任务生效。</p>'+tf('deadline','选组截止（留空不限制）','datetime-local');break;
     case 'team-leave':title='退出小组';body='<p>退出后可重新选择小组；开始实验后需由教师调整。</p>';button='确认退出';break;
-    case 'enroll':title='加入教学班';body=tf('join_code','班级邀请码','text','向任课教师获取');button='加入班级';break;
+    case 'enroll':
+      title='加入教学班';button='加入班级';
+      body=`<div class="field"><label for="tf-join_code">班级邀请码</label><input id="tf-join_code" data-field="join_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="输入老师提供的 6 位数字" value="${E(f.join_code)}"></div>`;
+      break;
   }
   return `<div class="overlay"><section class="dialog teaching-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="panelhead"><h2 id="dialog-title">${E(title)}</h2><button class="close" data-action="close" aria-label="关闭">${I('close')}</button></div>${body}${S.error?`<div class="error" role="alert">${E(S.error)}</div>`:''}<div class="actions dialog-actions">${B(button,'teaching-save','primary')}${T.preview?B('返回修改','publish-edit','btn'):B('取消','close','link')}</div></section></div>`;
 }
@@ -226,6 +229,11 @@ async function teachingSave(){
   if(kind==='member')payload={team_id:f.team_id,username:f.username,remove:f.operation==='remove',reason:f.reason||''};
   if(kind==='scheme-deadline')payload={scheme_id:f.scheme_id,deadline:teachingDate(f.deadline)};
   if(kind==='collaborator')payload={offering_id:T.offeringId,username:f.username};
+  if(kind==='enroll'){
+    const code=(f.join_code||'').trim();
+    if(!/^[0-9]{6}$/.test(code))throw new Error('请输入 6 位数字邀请码。');
+    payload={join_code:code};
+  }
   const result=await teachingManage(action,payload);
   S.modal=null;T.preview=null;T.form={};
   if(kind==='offering'||kind==='clone'){T.offeringId=result.id;T.assignmentId='';T.classId='';S.view='classes'}

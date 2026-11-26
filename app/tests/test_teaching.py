@@ -4,6 +4,7 @@ import secrets
 import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 import test_workflow as legacy
@@ -83,6 +84,7 @@ class TeachingManagement(unittest.TestCase):
         o = next(o for o in self.catalog()['offerings'] if o['id'] == clone)
         self.assertEqual(len(o['classes']), 1)
         self.assertEqual(o['classes'][0]['students'], [])
+        self.assertRegex(o['classes'][0]['join_code'], r'^[0-9]{6}$')
         empty = self.t.get('/api/state', params={'offering_id': clone}).json()
         self.assertIsNone(empty['assignment'])
         self.assertEqual(empty['groups'], [])
@@ -220,6 +222,32 @@ class TeachingManagement(unittest.TestCase):
         self.assertEqual(r.status_code, 404)
         with server.db() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM grouping_schemes').fetchone()[0], before)
+
+    def test_numeric_invites_migrate_without_reenrolling_students(self):
+        class_id = 'class-circuits-2026'
+        with server.db(True) as c:
+            c.execute('UPDATE classes SET join_code=? WHERE id=?', ('ABCD012345', class_id))
+            members = c.execute('SELECT * FROM enrollments ORDER BY class_id,user_id').fetchall()
+        with patch('teaching.secrets.randbelow', return_value=12345):
+            server.init_db()
+        server.init_db()
+        with server.db() as c:
+            self.assertEqual(c.execute('SELECT join_code FROM classes WHERE id=?', (class_id,)).fetchone()[0], '012345')
+            self.assertEqual(c.execute('SELECT * FROM enrollments ORDER BY class_id,user_id').fetchall(), members)
+        with patch('teaching.secrets.randbelow', side_effect=[12345, 234567]):
+            new_id = self.change('class', offering_id='offering-circuits-2026', name='另一个教学班')['id']
+        classes = self.catalog()['offerings'][0]['classes']
+        self.assertEqual(next(c['join_code'] for c in classes if c['id'] == new_id), '234567')
+        route = '/api/teaching/enroll'
+        self.assertEqual(self.s1.post(route, json=op(join_code='ABCD012345')).status_code, 422)
+        self.assertEqual(self.change('enroll', self.s1, join_code='012345')['id'], class_id)
+        with patch.object(server.TEACHING, 'join_failures', {}), patch.object(server.TEACHING, 'join_reset_at', 0):
+            for _ in range(8):
+                self.assertEqual(self.s1.post(route, json=op(join_code='000000')).status_code, 404)
+            limited = self.s1.post(route, json=op(join_code='000000'))
+            self.assertEqual(limited.status_code, 429)
+            self.assertGreater(int(limited.headers['Retry-After']), 0)
+            self.assertEqual(self.change('enroll', self.s2, join_code='012345')['id'], class_id)
 
     def test_automatic_assignment_and_cross_teacher_denial(self):
         a = self.setup_task(mode='assigned')

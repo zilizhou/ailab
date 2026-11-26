@@ -4,6 +4,7 @@ import math
 import re
 import secrets
 from datetime import datetime, timezone
+from time import monotonic
 
 from fastapi import HTTPException, Request
 
@@ -26,6 +27,14 @@ SCHEMA = [
 ]
 
 
+def new_join_code(c):
+    for _ in range(128):
+        code = f'{secrets.randbelow(1_000_000):06d}'
+        if not c.execute('SELECT 1 FROM classes WHERE join_code=?', (code,)).fetchone():
+            return code
+    raise HTTPException(503, '暂时无法分配班级邀请码，请稍后重试。')
+
+
 def migrate(c, experiment, uid, now, packed):
     for sql in SCHEMA:
         c.execute(sql)
@@ -38,6 +47,9 @@ def migrate(c, experiment, uid, now, packed):
     if version > 2:
         raise RuntimeError('Database schema is newer than this application')
     if version == 2:
+        legacy = c.execute("SELECT id FROM classes WHERE length(join_code)<>6 OR join_code GLOB '*[^0-9]*'").fetchall()
+        for row in legacy:
+            c.execute('UPDATE classes SET join_code=? WHERE id=?', (new_join_code(c), row['id']))
         return
     c.execute('INSERT OR IGNORE INTO terms VALUES(?,?,?)', ('term-legacy', '2026至2027学年第一学期', now()))
     for course in c.execute('SELECT * FROM courses').fetchall():
@@ -50,7 +62,7 @@ def migrate(c, experiment, uid, now, packed):
         for teacher in teachers:
             c.execute('INSERT OR IGNORE INTO course_owners VALUES(?,?)', (cid, teacher))
             c.execute('INSERT INTO offering_teachers VALUES(?,?)', (oid, teacher))
-        c.execute('INSERT INTO classes VALUES(?,?,?,?,?)', (cls, oid, '教学试用班', secrets.token_hex(5).upper(), now()))
+        c.execute('INSERT INTO classes VALUES(?,?,?,?,?)', (cls, oid, '教学试用班', new_join_code(c), now()))
         c.execute('INSERT INTO grouping_schemes VALUES(?,?,?,?,?,?,?,?)', (scheme, cls, '原有实验分组', 1, 4, 'self', 1, None))
         package = json.loads(course['experiment'])
         package.setdefault('rule_type', 'resistor-divider')
@@ -74,6 +86,21 @@ def migrate(c, experiment, uid, now, packed):
 class Teaching:
     def __init__(self, service):
         self.s = service
+        self.join_failures = {}
+        self.join_reset_at = 0
+
+    def join_attempt_keys(self, who, request):
+        now = monotonic()
+        if now >= self.join_reset_at:
+            self.join_failures.clear()
+            self.join_reset_at = now + 600
+        keys = [(('account', who['id']), 8)]
+        if request.client:
+            keys.append((('address', request.client.host), 60))
+        if any(self.join_failures.get(key, 0) >= limit for key, limit in keys):
+            raise HTTPException(429, '邀请码尝试次数过多，请稍后重试。',
+                                headers={'Retry-After': str(max(1, math.ceil(self.join_reset_at - now)))})
+        return [key for key, _ in keys]
 
     def teacher(self, who):
         if who['role'] != 'teacher':
@@ -354,7 +381,7 @@ class Teaching:
             c.execute('INSERT INTO offering_teachers VALUES(?,?)', (oid, who['id']))
             if action == 'clone':
                 for cls in c.execute('SELECT name FROM classes WHERE offering_id=?', (old['id'],)).fetchall():
-                    c.execute('INSERT INTO classes VALUES(?,?,?,?,?)', (uid(), oid, cls[0], secrets.token_hex(5).upper(), now()))
+                    c.execute('INSERT INTO classes VALUES(?,?,?,?,?)', (uid(), oid, cls[0], new_join_code(c), now()))
             return {'id': oid}
         if action == 'archive':
             o = self.offering(c, who, d.get('offering_id'))
@@ -376,7 +403,7 @@ class Teaching:
         if action == 'class':
             o = self.offering(c, who, d.get('offering_id'), True)
             cid = uid()
-            c.execute('INSERT INTO classes VALUES(?,?,?,?,?)', (cid, o['id'], self.text(d, 'name', 100), secrets.token_hex(5).upper(), now()))
+            c.execute('INSERT INTO classes VALUES(?,?,?,?,?)', (cid, o['id'], self.text(d, 'name', 100), new_join_code(c), now()))
             return {'id': cid}
         if action == 'roster':
             cls, o = self.classroom(c, who, d.get('class_id'), True)
@@ -398,7 +425,10 @@ class Teaching:
         if action == 'enroll':
             if who['role'] != 'student':
                 raise HTTPException(403, '仅学生可以加入教学班')
-            cls = c.execute('SELECT c.*,o.archived FROM classes c JOIN offerings o ON o.id=c.offering_id WHERE c.join_code=?', (self.text(d, 'join_code', 30).upper(),)).fetchone()
+            code = d.get('join_code', '')
+            if not isinstance(code, str) or len(code) > 30 or not re.fullmatch(r'[0-9]{6}', code.strip()):
+                raise HTTPException(422, '请输入 6 位数字邀请码。')
+            cls = c.execute('SELECT c.*,o.archived FROM classes c JOIN offerings o ON o.id=c.offering_id WHERE c.join_code=?', (code.strip(),)).fetchone()
             if not cls or cls['archived']:
                 raise HTTPException(404, '邀请码无效或开课已归档')
             if c.execute('SELECT 1 FROM enrollments e JOIN classes x ON x.id=e.class_id WHERE x.offering_id=? AND e.user_id=? AND x.id<>?', (cls['offering_id'], who['id'], cls['id'])).fetchone():
@@ -587,7 +617,14 @@ def install(app, service):
             raise HTTPException(422, '分组方案格式无效')
         with service['db'](True) as c:
             who = service['user'](request, c)
-            return service['once'](c, who, data, 'teaching:' + action, lambda: teaching.execute(c, who, action, data))
+            keys = teaching.join_attempt_keys(who, request) if action == 'enroll' and who['role'] == 'student' else []
+            try:
+                return service['once'](c, who, data, 'teaching:' + action, lambda: teaching.execute(c, who, action, data))
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    for key in keys:
+                        teaching.join_failures[key] = teaching.join_failures.get(key, 0) + 1
+                raise
 
     @app.post('/api/register')
     async def register(request: Request):

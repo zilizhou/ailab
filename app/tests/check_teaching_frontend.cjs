@@ -10,7 +10,7 @@ const p={id:'resistor-divider',version:'1',rule_type:'resistor-divider',title:'�
 const member={id:'student1',name:'林同学',username:'student1'};
 const team={id:'team1',scheme_id:'scheme1',name:'自主小组',locked:0,members:[member],mine:false};
 const scheme={id:'scheme1',class_id:'class1',name:'实验分组',min_size:1,max_size:4,mode:'self',allow_create:1,deadline:null,teams:[team]};
-const cls={id:'class1',name:'教学班',join_code:'CLASS123',students:[member],schemes:[scheme]};
+const cls={id:'class1',name:'教学班',join_code:'012345',students:[member],schemes:[scheme]};
 const offering={id:'offering1',course_id:'course1',title:'电路基础<script>unsafe</script>',term:'2026秋季',archived:0,classes:[cls],teachers:[{id:'teacher',name:'周老师',username:'teacher'}]};
 const task={id:'assignment1',offering_id:'offering1',title:'分压实验任务',status:'published',opens_at:null,closes_at:null,version_id:'version1',experiment:p,targets:[{class_id:'class1',class_name:'教学班',scheme_id:'scheme1'}],my_runs:[]};
 const catalog={user:{id:'teacher',role:'teacher',name:'周老师'},offerings:[offering],courses:[{id:'course1',title:offering.title}],terms:[{id:'term1',name:'2026秋季'}],templates:[{id:'template1',title:p.title,versions:[{id:'version1',number:1,title:p.title,package:p}]}],assignments:[task]};
@@ -96,6 +96,11 @@ async function main(){
   await run(`action(${JSON.stringify(experimentTab[1])})`);run('render()');
   assert.equal(run('S.view'),'tasks','The experiment tab must return to the task list after visiting My account');
   assert.match(root.innerHTML,/待选组/);
+  await run("teachingAction('manage:enroll')");run('render()');
+  assert.match(root.innerHTML,/inputmode="numeric" pattern="\[0-9\]\{6\}" maxlength="6"/);
+  run('T.form.join_code="abc123"');
+  await assert.rejects(run('teachingSave()'),/6 位数字邀请码/);
+  await run("action('close')");run('render()');
   assert.match(root.innerHTML,/data-action="read-handout:assignment1"/);
   await run("teachingAction('read-handout:assignment1')");run('render()');
   assert.match(root.innerHTML,/<h3>学习目标<\/h3>/);
