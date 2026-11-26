@@ -12,6 +12,7 @@ _temp = tempfile.TemporaryDirectory()
 os.environ['LAB_DATA_DIR'] = _temp.name
 os.environ.pop('LAB_AI_KEY', None)
 os.environ.pop('LAB_AI_MODEL', None)
+os.environ.pop('LAB_AI_VISION_MODEL', None)
 
 from fastapi.testclient import TestClient
 import server
@@ -150,6 +151,41 @@ class TeachingWorkflow(unittest.TestCase):
         filename=self.group()['events'][-1]['data']['file']
         self.assertEqual(self.teacher.get('/api/photos/'+filename).status_code,200)
         self.assertEqual(self.s2.get('/api/photos/'+filename).status_code,404)
+
+    def test_visual_analysis_respects_scope_and_keeps_observations_separate(self):
+        png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+        saved = self.s1.post('/api/groups/group-1/photo', json=op(revision=1, content=png, caption='接线')).json()
+        photo = {'photo_id': saved['id'], 'question': '哪些步骤可以从画面确认？'}
+        route = '/api/groups/group-1/media-analysis'
+        self.assertEqual(self.s1.post(route, json=photo).status_code, 503)
+        mp4 = b'\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isom'
+        response = server.httpx.Response(200, json={'choices': [{'message': {'content': '请对照画面复核。'}}]},
+                                         request=server.httpx.Request('POST', 'https://example.test/chat/completions'))
+        config = {'LAB_AI_KEY': 'shared-test-key', 'LAB_AI_MODEL': 'qwen-plus', 'LAB_AI_VISION_MODEL': 'qwen3-vl-plus'}
+        with patch.dict(os.environ, config), patch.object(server.httpx.AsyncClient, 'post', new_callable=AsyncMock, return_value=response) as call:
+            self.assertTrue(self.s1.get('/api/state').json()['vision_configured'])
+            self.assertEqual(self.s2.post(route, json=photo).status_code, 404)
+            self.assertEqual(self.s2.post('/api/groups/group-2/media-analysis', json=photo).status_code, 404)
+            self.assertEqual(self.s1.post(route, json={'content': 'YmFk'}).status_code, 422)
+            with patch.object(server, 'MAX_VISION_BODY', 8):
+                self.assertEqual(self.s1.post(route, json=photo).status_code, 413)
+            call.assert_not_called()
+            self.assertEqual(self.teacher.post(route, json=photo).json()['media_type'], 'image')
+            args = call.call_args.kwargs
+            self.assertEqual(args['headers']['Authorization'], 'Bearer shared-test-key')
+            self.assertEqual(args['json']['model'], 'qwen3-vl-plus')
+            parts = args['json']['messages'][1]['content']
+            self.assertEqual(parts[0]['image_url']['url'], 'data:image/png;base64,' + png)
+            text = json.loads(parts[1]['text'])
+            self.assertEqual(text['recorded_revision'], 1)
+            self.assertEqual(text['question'], photo['question'])
+            self.assertNotIn('group', text)
+            result = self.s1.post(route, json={'content': base64.b64encode(mp4).decode()})
+            self.assertEqual(result.json()['media_type'], 'video')
+            part = call.call_args.kwargs['json']['messages'][1]['content'][0]
+            self.assertEqual(part['type'], 'video_url')
+            self.assertTrue(part['video_url']['url'].startswith('data:video/mp4;base64,'))
+        self.assertEqual([e['kind'] for e in self.group()['events']], ['photo'])
 
     def test_rules_fallback_and_model_failure_keep_records(self):
         self.confirm(self.draft())

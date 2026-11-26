@@ -93,6 +93,21 @@ async function interactionChecks(){
   context.fetch=async path=>({ok:true,status:200,json:async()=>path.endsWith('/state')?updated:{saved:true}});
   await run("S.busy=true;S.message='已发送的旧文字';action('send-message')");
   assert.equal(run('S.message'),'','Refresh must not restore a successfully sent message into the composer');
+  run('S.busy=false;S.data.user.role="student";S.view="lab";S.data.vision_configured=true;render()');
+  assert.match(root.innerHTML,/data-action="open-media"/);
+  await run("action('open-media')");run('render()');
+  assert.match(root.innerHTML,/accept="image\/jpeg,image\/png,video\/mp4,\.mp4"/);
+  context.FileReader=class{readAsDataURL(){this.result='data:video/mp4;base64,dGVzdA==';this.onload()}};
+  context.fetch=async(path,options)=>{
+    assert.equal(path,'/api/groups/group-1/media-analysis');
+    assert.deepEqual(JSON.parse(options.body),{question:'请核对步骤',content:'dGVzdA=='});
+    return {ok:true,json:async()=>({media_type:'video',text:'<script>unsafe</script>'})};
+  };
+  run('S.media.file={name:"实验.mp4",type:"video/mp4",size:4};S.media.question="请核对步骤"');
+  await run("action('analyze-media')");run('render()');
+  assert.match(root.innerHTML,/视频观察建议/);
+  assert.match(root.innerHTML,/&lt;script&gt;unsafe&lt;\/script&gt;/);
+  await run("action('close')");assert.equal(run('S.media'),null);
   console.log('PASS: approved UI structure/styles, 8 screens, 4 dialogs, unit cards, direct question, teacher controls, safe polling, HTTP/HTTPS retries');
 }
 interactionChecks().catch(e=>{console.error(e);process.exitCode=1});

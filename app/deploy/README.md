@@ -62,7 +62,11 @@ systemd-run --user --wait --pipe --collect \
   /home/zlzhou/apps/ai-lab-assistant/current/model_client.py
 ```
 
-测试成功后重启 `ai-lab-assistant.service` 以读取配置，并用试用实验验证学生提示和教师草稿。模型不可用时，助教仍提供规则建议。电路图片和视频理解需单独接入多模态模型。
+测试成功后重启 `ai-lab-assistant.service` 以读取配置，并用试用实验验证学生提示和教师草稿。文字模型不可用时，助教仍提供规则建议。
+
+为图片和视频启用视觉模型时，在同一配置文件增加 `LAB_AI_VISION_MODEL=qwen3-vl-plus`。视觉调用复用 `LAB_AI_BASE_URL` 和 `LAB_AI_KEY`，百炼业务空间需要同时有权调用两个模型。参见[百炼密钥权限说明](https://help.aliyun.com/zh/model-studio/permission-management-overview)和[视觉理解接口说明](https://help.aliyun.com/zh/model-studio/vision)。
+
+进入实验或教师的本组实验过程，点击「AI 看图／视频」。图片支持 JPEG、PNG（4 MB），视频支持 MP4（10 MB，建议截取 2 至 30 秒）。实验记录中已保存的照片也可发起 AI 分析。视觉请求仅发送所选素材、核对问题和必要的实验说明。结果供人工核对，不自动保存为测量、报告或评分。新上传作为临时分析素材处理，需存档的照片可另用「加照片」。
 
 服务器使用独立数据目录，代码更新不会覆盖数据库与照片。现有本地数据库没有实验记录，因此服务器从空白实验过程开始；不迁移本地登录会话。
 

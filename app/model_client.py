@@ -1,8 +1,9 @@
 """Server-side client for providers with a Chat Completions endpoint."""
 import asyncio
+import base64
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
 import httpx
 
@@ -14,22 +15,23 @@ class ModelConfig:
     api_key: str = field(repr=False)
 
     @classmethod
-    def from_env(cls) -> Optional['ModelConfig']:
+    def from_env(cls, model_var: str = 'LAB_AI_MODEL') -> Optional['ModelConfig']:
         key = os.getenv('LAB_AI_KEY', '').strip()
-        model = os.getenv('LAB_AI_MODEL', '').strip()
+        model = os.getenv(model_var, '').strip()
         if not key or not model:
             return None
         base = os.getenv('LAB_AI_BASE_URL', 'https://api.openai.com/v1').strip().rstrip('/')
         return cls(base, model, key)
 
 
-async def complete(config: ModelConfig, system: str, prompt: str, *, max_tokens: int = 1200) -> str:
+async def complete(config: ModelConfig, system: str, prompt: Union[str, list[dict]], *,
+                   max_tokens: int = 1200, timeout: int = 20) -> str:
     payload = {
         'model': config.model,
         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}],
         'max_tokens': max_tokens,
     }
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(config.base_url + '/chat/completions',
                                      headers={'Authorization': 'Bearer ' + config.api_key}, json=payload)
         response.raise_for_status()
@@ -40,6 +42,12 @@ async def complete(config: ModelConfig, system: str, prompt: str, *, max_tokens:
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError('Model returned no text')
     return answer.strip()
+
+
+def visual_prompt(content: bytes, mime: str, text: str) -> list[dict]:
+    kind = 'video_url' if mime == 'video/mp4' else 'image_url'
+    url = 'data:' + mime + ';base64,' + base64.b64encode(content).decode('ascii')
+    return [{'type': kind, kind: {'url': url}}, {'type': 'text', 'text': text}]
 
 
 def check_connection() -> int:
