@@ -14,6 +14,17 @@ const group={id:'group-1',name:'01 组',revision:1,status:'working',help:1,membe
 const data={user:{id:'student1',role:'student',name:'林同学'},model_configured:false,groups:[group],course:{title:'电子电路基础',experiment:{version:'0.1',title:'电阻分压实验',objective:'验证分压',points:{TP0:'参考地',TP1:'供电',TP2:'输出'},formula:'Vout = Vin/2',steps:['预测','测量'],safety:'先断电再改线'}}};
 run('S.data='+JSON.stringify(data)+';S.gid="group-1"');
 for(const view of ['lab','records','submit']){run(`S.view='${view}';render()`);assert.ok(root.innerHTML.includes('实验助教'));assert.ok(root.innerHTML.includes('x-phone'));assert.ok(root.innerHTML.includes('x-phonenav'));assert.ok(!root.innerHTML.includes('student-layout'));assert.ok(!root.innerHTML.includes('undefined'));assert.ok(!root.innerHTML.includes('<script>alert'))}
+run('S.view="mine";render()');
+assert.ok(root.innerHTML.includes('<h1>我的</h1>'));
+assert.ok(root.innerHTML.includes('林同学'));
+assert.ok(root.innerHTML.includes('01 组'));
+assert.ok(!run('studentNav()').includes('view:submit'),'Submission belongs to the experiment, not bottom navigation');
+run('S.view="submit";render()');
+assert.match(run('studentNav()'),/class="on" aria-current="page" data-action="view:lab"/);
+assert.ok(root.innerHTML.includes('返回实验'));
+assert.ok(root.innerHTML.includes('data-action="submit"'),'Actual submission must remain available inside the experiment');
+run('S.view="lab";render()');
+assert.ok(root.innerHTML.includes('data-action="view:submit"'),'Experiment must offer a conclusion entry');
 run('S.draft='+JSON.stringify({id:'draft1',raw:'供电3.30V，输出80mV',revision:1,source:'规则提取',...parsed})+';S.view="lab";render()');
 assert.ok(root.innerHTML.includes('尚未计入测量'));
 assert.ok(root.innerHTML.includes('value="80"'));

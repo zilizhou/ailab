@@ -49,9 +49,24 @@ async function main(){
   await run('refresh(false)');
   assert.ok(root.innerHTML.includes('刚加入班级的学生'),'Roster-only updates must refresh management pages');
   run('S.busy=false;S.modal=null;S.data.user.role="student";T.catalog.user.role="student";T.catalog.user.id="student1";T.catalog.assignments[0].my_runs=[]');
-  for(const view of ['courses','tasks','teams','lab','records','submit']){
+  for(const view of ['courses','tasks','teams','lab','records','submit','mine']){
     run(`S.view='${view}';render()`);assert.ok(root.innerHTML.includes('x-phone'),view);assert.ok(!root.innerHTML.includes('undefined'),view);
   }
+  assert.ok(root.innerHTML.includes('<h1>我的</h1>'));
+  assert.ok(root.innerHTML.includes('自主小组'));
+  assert.ok(root.innerHTML.includes('全部课程'));
+  assert.ok(root.innerHTML.includes('x-phonenav'));
+  assert.ok(!root.innerHTML.includes('<script>unsafe'),'Profile course title must be escaped');
+  await run("action('view:submit')");run('render()');
+  assert.ok(root.innerHTML.includes('data-action="submit"'));
+  await run("action('view:mine')");run('render()');
+  assert.ok(root.innerHTML.includes('<h1>我的</h1>'),'Bottom tab must route to the personal page');
+  run('S.data.groups=[];render()');
+  assert.ok(root.innerHTML.includes('完成分组后'));
+  assert.ok(!root.innerHTML.includes('undefined'));
+  await run("action('view:records')");run('render()');
+  assert.ok(root.innerHTML.includes('查看我的课程'),'No-group navigation must have a usable empty state');
+  run('S.data.groups='+JSON.stringify([group]));
   run('S.view="teams";T.catalog.offerings[0].classes[0].schemes[0].teams[0].mine=true;render()');
   assert.ok(root.innerHTML.includes('进入实验'));assert.ok(root.innerHTML.includes('退出小组'));
   run('S.modal=null;S.view="lab";S.data.course.experiment.rule_type="observation";render()');

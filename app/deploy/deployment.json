@@ -1,9 +1,9 @@
 {
-  "deployed_at_utc": "2026-11-25 15:19:22 UTC",
+  "deployed_at_utc": "2026-11-26 01:38:15 UTC",
   "server": "10.31.26.22",
   "ssh_user": "zlzhou",
   "url": "http://10.31.26.22:8766/",
-  "release": "20261125150740",
+  "release": "20261126013739",
   "service": "ai-lab-assistant.service",
   "service_manager": "systemd --user",
   "root": "/home/zlzhou/apps/ai-lab-assistant",
@@ -19,14 +19,16 @@
     "schema_migration": "production snapshot migrated twice; original legacy fields and values preserved",
     "temporary_test_data_removed": true,
     "browser_visual_check": "not performed",
-    "frontend_context_switch": "stale responses discarded; roster-only updates reflected"
+    "frontend_context_switch": "stale responses discarded; roster-only updates reflected",
+    "student_navigation": "experiment / records / my account; conclusion and submission remain inside experiment; frontend checks passed locally and on server",
+    "backend_tests_scope": "26 backend and 28 live teaching checks from previous release; current update changes frontend only"
   },
-  "previous_release": "20261125121852",
+  "previous_release": "20261125150740",
   "ui_version": "0.2",
   "ui_reference": "design/approved-ui-v0.2.html",
   "project": "验知有道——面向实验全过程的多模态智能助教",
   "platform_version": "0.2-stage1",
   "schema_version": 2,
-  "asset_version": "teaching04",
+  "asset_version": "teaching05",
   "database_backup": "shared/backups/pre-teaching-final-20261125150740.sqlite3"
 }

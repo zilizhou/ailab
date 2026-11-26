@@ -60,9 +60,9 @@ function teachingSidebar(){
 function teachingShell(){
   const error=S.error?`<div class="error" role="alert">${E(S.error)}</div>`:'';
   if(isTeacher())return `<div class="teacher-stage"><div class="x-shell">${teachingHeader()}<div class="x-layout">${teachingSidebar()}<main class="x-main">${teachingContext()}${teacherView()}${error}<footer class="sync-foot">${connection()}</footer></main></div></div></div>`;
-  const workspace=['lab','records','submit'].includes(S.view)&&current();
+  const workspace=['lab','records','submit','mine'].includes(S.view);
   const o=teachingOffering(),g=current();
-  return `<div class="x-stage student-stage"><div class="x-phone"><header class="x-phonehead"><div class="row"><div class="x-brand"><span class="x-mark">${I('circuit')}</span>验知有道</div><div class="actions">${workspace?B('课程','view:tasks','link'):''}<span class="x-avatar">${E(S.data.user.name[0])}</span>${B('退出','logout','link')}</div></div><div class="x-subline" style="margin:10px 0 0"><span>${E(workspace?o?.title||S.data.course.title:S.data.user.name)}${workspace?' · '+E(g.name):''}</span><span>${S.online?'已同步':'连接中断'}</span></div></header><main class="x-phonebody">${workspace?studentView():teachingStudentPortal()}${error}<div class="student-mode small muted">${S.data.model_configured?'模型建议需核对':'规则助教模式'} · 原话与确认记录分别保留</div></main>${workspace?studentNav():''}</div></div>`;
+  return `<div class="x-stage student-stage"><div class="x-phone"><header class="x-phonehead"><div class="row"><div class="x-brand"><span class="x-mark">${I('circuit')}</span>验知有道</div><div class="actions">${workspace?B('课程','view:tasks','link'):''}<span class="x-avatar">${E(S.data.user.name[0])}</span>${B('退出','logout','link')}</div></div><div class="x-subline" style="margin:10px 0 0"><span>${E(workspace?o?.title||S.data.course.title:S.data.user.name)}${workspace&&g?' · '+E(g.name):''}</span><span>${S.online?'已同步':'连接中断'}</span></div></header><main class="x-phonebody">${workspace?studentView():teachingStudentPortal()}${error}<div class="student-mode small muted">${S.data.model_configured?'模型建议需核对':'规则助教模式'} · 原话与确认记录分别保留</div></main>${workspace?studentNav():''}</div></div>`;
 }
 function teachingView(){
   return ({courses:teachingCourses,content:teachingContent,classes:teachingClasses,tasks:teachingTasks,teams:teachingGroups}[S.view]||teachingCourses)();

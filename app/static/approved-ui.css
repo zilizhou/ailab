@@ -46,6 +46,11 @@
 #lab-v2 .x-phonenav{position:sticky;bottom:0;z-index:8}
 #lab-v2 .x-phonenav button{font-size:13px}
 #lab-v2 .student-mode{font-size:12px;text-align:center;margin:18px 0 0}
+#lab-v2 .student-experiment-actions{display:flex;justify-content:flex-end;margin:0 0 14px}
+#lab-v2 .student-profile{display:flex;align-items:center;gap:14px;margin-top:18px}
+#lab-v2 .student-profile .x-avatar{width:48px;height:48px;flex-shrink:0;font-size:20px}
+#lab-v2 .student-profile p{margin:6px 0 0}
+#lab-v2 .student-profile-context{border-top:1px solid var(--line);margin-top:16px;padding-top:16px}
 #lab-v2 .offline-text{color:var(--amber)}
 #lab-v2 .x-value{line-height:1.3;margin-top:4px}
 #lab-v2 .chartwrap{margin-top:10px}
