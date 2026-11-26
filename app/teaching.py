@@ -1,12 +1,16 @@
 """Course, semester, class and assignment management. Every mutation is transactional."""
+import base64
+import io
 import json
 import math
 import re
 import secrets
 from datetime import datetime, timezone
 from time import monotonic
+from urllib.parse import quote
+from zipfile import BadZipFile, ZipFile
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, Response
 
 
 SCHEMA = [
@@ -18,6 +22,7 @@ SCHEMA = [
     'CREATE TABLE IF NOT EXISTS enrollments(class_id TEXT REFERENCES classes(id),user_id TEXT REFERENCES users(id),created TEXT NOT NULL,PRIMARY KEY(class_id,user_id))',
     'CREATE TABLE IF NOT EXISTS experiment_templates(id TEXT PRIMARY KEY,owner TEXT REFERENCES users(id),title TEXT NOT NULL,created TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS experiment_versions(id TEXT PRIMARY KEY,template_id TEXT REFERENCES experiment_templates(id),number INTEGER NOT NULL,title TEXT NOT NULL,package TEXT NOT NULL,created TEXT NOT NULL,UNIQUE(template_id,number))',
+    'CREATE TABLE IF NOT EXISTS handout_files(template_id TEXT PRIMARY KEY REFERENCES experiment_templates(id) ON DELETE CASCADE,filename TEXT NOT NULL,mime TEXT NOT NULL,content BLOB NOT NULL)',
     'CREATE TABLE IF NOT EXISTS grouping_schemes(id TEXT PRIMARY KEY,class_id TEXT REFERENCES classes(id),name TEXT NOT NULL,min_size INTEGER NOT NULL,max_size INTEGER NOT NULL,mode TEXT NOT NULL,allow_create INTEGER NOT NULL,deadline TEXT)',
     'CREATE TABLE IF NOT EXISTS teams(id TEXT PRIMARY KEY,scheme_id TEXT REFERENCES grouping_schemes(id),name TEXT NOT NULL,locked INTEGER NOT NULL DEFAULT 0,created TEXT NOT NULL,UNIQUE(id,scheme_id),UNIQUE(scheme_id,name))',
     'CREATE TABLE IF NOT EXISTS team_members(team_id TEXT,scheme_id TEXT,user_id TEXT REFERENCES users(id),joined TEXT NOT NULL,PRIMARY KEY(scheme_id,user_id),FOREIGN KEY(team_id,scheme_id) REFERENCES teams(id,scheme_id))',
@@ -25,6 +30,75 @@ SCHEMA = [
     'CREATE TABLE IF NOT EXISTS assignment_targets(assignment_id TEXT REFERENCES assignments(id),class_id TEXT REFERENCES classes(id),scheme_id TEXT REFERENCES grouping_schemes(id),PRIMARY KEY(assignment_id,class_id))',
     'CREATE TABLE IF NOT EXISTS teaching_audit(id TEXT PRIMARY KEY,actor TEXT REFERENCES users(id),kind TEXT NOT NULL,context TEXT NOT NULL,data TEXT NOT NULL,created TEXT NOT NULL)',
 ]
+
+HANDOUT_FILE_LIMIT = 10 * 1024 * 1024
+HANDOUT_REQUEST_LIMIT = 15 * 1024 * 1024
+HANDOUT_MIME = {
+    'pdf': 'application/pdf',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'doc': 'application/msword',
+}
+HANDOUT_TEXT_FIELDS = ('title', 'subject', 'objective', 'steps', 'materials', 'safety',
+                       'report_instructions', 'principle', 'preparation')
+HANDOUT_RULE_FIELDS = ('rule_type', 'r1_ohm', 'r2_ohm', 'supply_min_v', 'supply_max_v', 'tolerance_v')
+
+
+def handout_file_info(c, template_id):
+    row = c.execute('SELECT filename,mime,length(content) AS size FROM handout_files WHERE template_id=?',
+                    (template_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def read_handout_upload(upload):
+    if not isinstance(upload, dict):
+        raise HTTPException(422, '请选择 PDF 或 Word 文件。')
+    name = upload.get('filename')
+    if not isinstance(name, str) or not name.strip() or len(name) > 240 or re.search(r'[\\/\x00-\x1f\x7f]', name):
+        raise HTTPException(422, '文件名无效或过长。')
+    ext = name.rpartition('.')[2].lower()
+    if ext not in HANDOUT_MIME:
+        raise HTTPException(422, '仅支持 PDF、DOCX 或 DOC 文件。')
+    try:
+        content = base64.b64decode(upload.get('content', ''), validate=True)
+    except (ValueError, TypeError):
+        raise HTTPException(422, '文件无法读取，请重新选择。')
+    if len(content) > HANDOUT_FILE_LIMIT:
+        raise HTTPException(413, '实验讲义文件不能超过 10 MB。')
+    if ext == 'pdf':
+        valid = content.startswith(b'%PDF-')
+    elif ext == 'doc':
+        valid = content.startswith(bytes.fromhex('d0cf11e0a1b11ae1')) and 'WordDocument'.encode('utf-16-le') in content
+    else:
+        try:
+            with ZipFile(io.BytesIO(content)) as archive:
+                names = set(archive.namelist())
+                valid = {'[Content_Types].xml', 'word/document.xml'} <= names and 'word/vbaProject.bin' not in names
+        except (BadZipFile, UnicodeError):
+            valid = False
+    if not valid:
+        raise HTTPException(422, '文件内容与所选格式不符，请从原文档重新导出。')
+    return name, HANDOUT_MIME[ext], content
+
+
+def handout_download(c, template_id):
+    file = c.execute('SELECT * FROM handout_files WHERE template_id=?', (template_id,)).fetchone()
+    if not file:
+        raise HTTPException(404, '此讲义没有上传文件。')
+    ext = file['filename'].rpartition('.')[2].lower()
+    disposition = f'attachment; filename="handout.{ext}"; filename*=UTF-8\'\'{quote(file["filename"], safe="")}'
+    return Response(file['content'], media_type=file['mime'], headers={'Content-Disposition': disposition})
+
+
+async def read_handout_request(request):
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > HANDOUT_REQUEST_LIMIT:
+            raise HTTPException(413, '实验讲义文件不能超过 10 MB。')
+        body.extend(chunk)
+    try:
+        return json.loads(body)
+    except (ValueError, UnicodeError, RecursionError):
+        raise HTTPException(422, '无法读取讲义，请重新保存。')
 
 
 def new_join_code(c):
@@ -140,13 +214,23 @@ class Teaching:
         return dict(row), self.scheme(c, who, row['scheme_id'], write)
 
     def assignment(self, c, who, aid):
-        row = c.execute('SELECT a.*,v.package FROM assignments a JOIN experiment_versions v ON v.id=a.version_id WHERE a.id=?', (aid,)).fetchone()
+        row = c.execute('SELECT a.*,v.package,v.template_id FROM assignments a JOIN experiment_versions v ON v.id=a.version_id WHERE a.id=?', (aid,)).fetchone()
         if not row:
             raise HTTPException(404, '未找到实验任务')
         self.offering(c, who, row['offering_id'])
         if who['role'] == 'student' and not c.execute('SELECT 1 FROM assignment_targets t JOIN enrollments e ON e.class_id=t.class_id WHERE t.assignment_id=? AND e.user_id=?', (aid, who['id'])).fetchone():
             raise HTTPException(404, '该任务未向所在班级发布')
-        return dict(row)
+        return {**dict(row), 'document': handout_file_info(c, row['template_id'])}
+
+    def handout(self, c, who, template_id):
+        row = c.execute('''SELECT v.*, EXISTS(SELECT 1 FROM assignments a JOIN experiment_versions ref
+                          ON ref.id=a.version_id WHERE ref.template_id=t.id) AS in_use
+                          FROM experiment_templates t JOIN experiment_versions v ON v.template_id=t.id
+                          WHERE t.id=? AND t.owner=? ORDER BY v.number DESC LIMIT 1''',
+                        (template_id, who['id'])).fetchone()
+        if not row:
+            raise HTTPException(404, '未找到可管理的实验讲义。')
+        return row
 
     def group(self, c, who, gid):
         row = c.execute('SELECT * FROM groups WHERE id=?', (gid,)).fetchone()
@@ -264,12 +348,13 @@ class Teaching:
             o['classes'] = classrooms
             o['teachers'] = [dict(p) for p in c.execute('SELECT u.id,u.name,u.username FROM offering_teachers t JOIN users u ON u.id=t.user_id WHERE t.offering_id=?', (o['id'],))] if who['role'] == 'teacher' else []
             offerings.append(o)
-            for assignment in c.execute('SELECT a.*,v.package FROM assignments a JOIN experiment_versions v ON v.id=a.version_id WHERE a.offering_id=? ORDER BY a.created DESC,a.id', (o['id'],)).fetchall():
+            for assignment in c.execute('SELECT a.*,v.package,v.template_id FROM assignments a JOIN experiment_versions v ON v.id=a.version_id WHERE a.offering_id=? ORDER BY a.created DESC,a.id', (o['id'],)).fetchall():
                 targets = [dict(t) for t in c.execute('SELECT t.*,c.name AS class_name FROM assignment_targets t JOIN classes c ON c.id=t.class_id WHERE t.assignment_id=?', (assignment['id'],)) if any(cls['id'] == t['class_id'] for cls in classrooms)]
                 if not targets:
                     continue
                 a = dict(assignment)
                 a['experiment'] = json.loads(a.pop('package'))
+                a['document'] = handout_file_info(c, a['template_id'])
                 a['targets'] = targets
                 a['my_runs'] = [r[0] for r in c.execute('SELECT g.id FROM groups g JOIN team_members m ON m.team_id=g.team_id JOIN enrollments e ON e.class_id=g.class_id AND e.user_id=m.user_id WHERE g.assignment_id=? AND m.user_id=?', (a['id'], who['id']))]
                 assignments.append(a)
@@ -279,11 +364,9 @@ class Teaching:
             courses = [dict(r) for r in c.execute('SELECT c.id,c.title FROM courses c JOIN course_owners o ON o.course_id=c.id WHERE o.teacher_id=? ORDER BY c.title', (who['id'],))]
             for row in c.execute('SELECT * FROM experiment_templates WHERE owner=? ORDER BY created DESC', (who['id'],)):
                 t = dict(row)
-                t['versions'] = []
-                for v in c.execute('SELECT * FROM experiment_versions WHERE template_id=? ORDER BY number DESC', (t['id'],)):
-                    item = dict(v)
-                    item['package'] = json.loads(item['package'])
-                    t['versions'].append(item)
+                current = self.handout(c, who, t['id'])
+                t.update(experiment=json.loads(current['package']), in_use=bool(current['in_use']),
+                         document=handout_file_info(c, t['id']))
                 templates.append(t)
         return {'offerings': offerings, 'assignments': assignments, 'templates': templates, 'courses': courses, 'terms': [dict(r) for r in c.execute('SELECT * FROM terms ORDER BY created DESC,id')], 'user': self.s['public_user'](who)}
 
@@ -316,14 +399,14 @@ class Teaching:
         except (TypeError, ValueError, OverflowError):
             raise HTTPException(422, f'{key} 超出允许范围')
 
-    def package(self, data, number):
+    def package(self, data, number, has_document=False):
         kind = data.get('rule_type', 'resistor-divider')
         if kind not in ('resistor-divider', 'observation'):
             raise HTTPException(422, '请选择已支持的实验类型')
         steps = data.get('steps', [])
-        if not isinstance(steps, list) or not 1 <= len(steps) <= 30 or any(not isinstance(x, str) or not x.strip() or len(x) > 400 for x in steps):
+        if not isinstance(steps, list) or len(steps) > 30 or (not steps and not has_document) or any(not isinstance(x, str) or not x.strip() or len(x) > 400 for x in steps):
             raise HTTPException(422, '请填写一至三十个实验步骤，每步不超过400字')
-        p = {'id': kind, 'version': str(number), 'rule_type': kind, 'title': self.text(data, 'title', 120), 'subject': self.text(data, 'subject', 80), 'objective': self.text(data, 'objective', 3000), 'steps': [x.strip() for x in steps], 'materials': self.text(data, 'materials', 3000, False), 'safety': self.text(data, 'safety', 3000, False), 'report_instructions': self.text(data, 'report_instructions', 3000, False)}
+        p = {'id': kind, 'version': str(number), 'rule_type': kind, 'title': self.text(data, 'title', 120), 'subject': self.text(data, 'subject', 80, not has_document), 'objective': self.text(data, 'objective', 3000, not has_document), 'steps': [x.strip() for x in steps], 'materials': self.text(data, 'materials', 3000, False), 'safety': self.text(data, 'safety', 3000, False), 'report_instructions': self.text(data, 'report_instructions', 3000, False)}
         p['principle'] = self.text(data, 'principle', 3000, False)
         p['preparation'] = self.text(data, 'preparation', 3000, False)
         if kind == 'resistor-divider':
@@ -344,9 +427,51 @@ class Teaching:
             if scheme['deadline'] and datetime.now(timezone.utc) > datetime.fromisoformat(scheme['deadline']):
                 raise HTTPException(409, '已过选组截止时间，请联系教师')
 
+    def save_handout(self, c, who, action, data):
+        uid, now, packed = self.s['uid'], self.s['now'], self.s['packed']
+        source_id = data.get('template_id')
+        current = self.handout(c, who, source_id) if action != 'template' else None
+        previous = json.loads(current['package']) if current else None
+        old_file = handout_file_info(c, source_id) if current else None
+        copy = action == 'template-copy'
+        updating = current is not None and not copy
+        file = read_handout_upload(data['document']) if 'document' in data and not copy else None
+        removing = data.get('remove_document') is True and updating
+        if file and removing:
+            raise HTTPException(422, '请选择替换或移除文件。')
+        if copy:
+            data = {**previous, 'title': self.text(data, 'title', 120)}
+        elif file and not self.text(data, 'title', 120, False):
+            data = {**data, 'title': file[0].rsplit('.', 1)[0][:120]}
+        number = current['number'] if updating else 1
+        package = self.package(data, number, bool(file or (old_file and not removing)))
+        if updating and current['in_use'] and any(package.get(k) != previous.get(k) for k in HANDOUT_RULE_FIELDS):
+            raise HTTPException(409, '这份讲义已用于实验。要调整判定方式或参数，请复制成新的讲义。')
+        if updating:
+            tid, vid = source_id, current['id']
+            c.execute('UPDATE experiment_templates SET title=? WHERE id=?', (package['title'], tid))
+            c.execute('UPDATE experiment_versions SET title=?,package=? WHERE id=?', (package['title'], packed(package), vid))
+            # Existing assignments may still reference rows from the previous versioning workflow.
+            for legacy in c.execute('SELECT id,package FROM experiment_versions WHERE template_id=? AND id<>?', (tid, vid)).fetchall():
+                historical = json.loads(legacy['package'])
+                historical.update({key: package[key] for key in HANDOUT_TEXT_FIELDS})
+                c.execute('UPDATE experiment_versions SET title=?,package=? WHERE id=?', (package['title'], packed(historical), legacy['id']))
+        else:
+            tid, vid = uid(), uid()
+            c.execute('INSERT INTO experiment_templates VALUES(?,?,?,?)', (tid, who['id'], package['title'], now()))
+            c.execute('INSERT INTO experiment_versions VALUES(?,?,?,?,?,?)', (vid, tid, number, package['title'], packed(package), now()))
+        if file:
+            c.execute('''INSERT INTO handout_files VALUES(?,?,?,?) ON CONFLICT(template_id)
+                         DO UPDATE SET filename=excluded.filename,mime=excluded.mime,content=excluded.content''', (tid, *file))
+        elif removing:
+            c.execute('DELETE FROM handout_files WHERE template_id=?', (tid,))
+        elif copy and old_file:
+            c.execute('INSERT INTO handout_files SELECT ?,filename,mime,content FROM handout_files WHERE template_id=?', (tid, source_id))
+        return {'id': tid, 'version_id': vid}
+
     def execute(self, c, who, action, d):
         uid, now, packed = self.s['uid'], self.s['now'], self.s['packed']
-        teacher_actions = {'term', 'course', 'offering', 'archive', 'clone', 'class', 'roster', 'remove-student', 'template', 'template-version', 'template-copy', 'publish', 'schedule', 'auto-assign', 'member', 'collaborator', 'scheme-deadline'}
+        teacher_actions = {'term', 'course', 'offering', 'archive', 'clone', 'class', 'roster', 'remove-student', 'template', 'template-update', 'template-version', 'template-copy', 'publish', 'schedule', 'auto-assign', 'member', 'collaborator', 'scheme-deadline'}
         if action in teacher_actions:
             self.teacher(who)
         if action == 'term':
@@ -446,30 +571,15 @@ class Teaching:
             c.execute('DELETE FROM enrollments WHERE class_id=? AND user_id=?', (cls['id'], person))
             self.audit(c, who, action, cls['id'], {'user_id': person, 'reason': d.get('reason', '')})
             return {'saved': True}
-        if action in ('template', 'template-version', 'template-copy'):
-            if action == 'template':
-                tid, number = uid(), 1
-            else:
-                template = c.execute('SELECT * FROM experiment_templates WHERE id=? AND owner=?', (d.get('template_id'), who['id'])).fetchone()
-                if not template:
-                    raise HTTPException(404, '未找到可编辑的实验内容')
-                previous = c.execute('SELECT * FROM experiment_versions WHERE template_id=? ORDER BY number DESC LIMIT 1', (template['id'],)).fetchone()
-                tid, number = (uid(), 1) if action == 'template-copy' else (template['id'], previous['number'] + 1)
-                if action == 'template-copy':
-                    d = {**json.loads(previous['package']), 'title': self.text(d, 'title', 120)}
-            package = self.package(d, number)
-            if action != 'template-version':
-                c.execute('INSERT INTO experiment_templates VALUES(?,?,?,?)', (tid, who['id'], package['title'], now()))
-            else:
-                c.execute('UPDATE experiment_templates SET title=? WHERE id=?', (package['title'], tid))
-            vid = uid()
-            c.execute('INSERT INTO experiment_versions VALUES(?,?,?,?,?,?)', (vid, tid, number, package['title'], packed(package), now()))
-            return {'id': tid, 'version_id': vid}
+        if action in ('template', 'template-update', 'template-version', 'template-copy'):
+            return self.save_handout(c, who, action, d)
         if action == 'publish':
             o = self.offering(c, who, d.get('offering_id'), True)
-            version = c.execute('SELECT v.* FROM experiment_versions v JOIN experiment_templates t ON t.id=v.template_id WHERE v.id=? AND t.owner=?', (d.get('version_id'), who['id'])).fetchone()
-            if not version:
-                raise HTTPException(404, '未找到可发布的实验版本')
+            template_id = d.get('template_id')
+            if not template_id and d.get('version_id'):
+                legacy = c.execute('SELECT template_id FROM experiment_versions WHERE id=?', (d['version_id'],)).fetchone()
+                template_id = legacy['template_id'] if legacy else None
+            version = self.handout(c, who, template_id)
             ids = d.get('class_ids')
             if not isinstance(ids, list) or not 1 <= len(ids) <= 50 or any(not isinstance(x, str) for x in ids):
                 raise HTTPException(422, '请选择一至五十个教学班')
@@ -605,9 +715,28 @@ def install(app, service):
         with service['db']() as c:
             return teaching.catalog(c, service['user'](request, c))
 
+    @app.get('/api/teaching/handouts/{template_id}/file')
+    def download_teacher_handout(template_id: str, request: Request):
+        with service['db']() as c:
+            who = service['user'](request, c)
+            teaching.handout(c, who, template_id)
+            return handout_download(c, template_id)
+
+    @app.get('/api/teaching/assignments/{assignment_id}/handout')
+    def download_assignment_handout(assignment_id: str, request: Request):
+        with service['db']() as c:
+            who = service['user'](request, c)
+            assignment = teaching.assignment(c, who, assignment_id)
+            return handout_download(c, assignment['template_id'])
+
     @app.post('/api/teaching/{action}')
     async def change(action: str, request: Request):
-        data = await request.json()
+        if action in ('template', 'template-update', 'template-version'):
+            with service['db']() as c:
+                teaching.teacher(service['user'](request, c))
+            data = await read_handout_request(request)
+        else:
+            data = await request.json()
         if not isinstance(data, dict):
             raise HTTPException(422, '请求内容无效')
         for key in ('course_id', 'term_id', 'offering_id', 'class_id', 'template_id', 'version_id', 'assignment_id', 'scheme_id', 'team_id', 'user_id'):

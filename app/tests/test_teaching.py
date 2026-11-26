@@ -1,10 +1,13 @@
+import base64
 import concurrent.futures
+import io
 import json
 import secrets
 import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 import test_workflow as legacy
@@ -162,12 +165,18 @@ class TeachingManagement(unittest.TestCase):
         self.assertEqual(self.run_for(b)['revision'], 1)
         self.assertEqual(self.run_for(b)['events'], [])
 
-    def test_template_versions_and_parameterized_rules(self):
+    def test_editing_handout_does_not_create_versions_or_change_published_rules(self):
         a = self.setup_task()
         self.change('team-create', self.s1, scheme_id=a['scheme'])
-        v2 = self.change('template-version', template_id=a['template']['id'], **{**server.EXPERIMENT, 'r1_ohm': 20000, 'rule_type': 'resistor-divider',
-                                                                               'principle': '用串联分压关系预测输出。', 'preparation': '记录电阻标称值。'})
-        aid = self.change('publish', **{**a['payload'], 'version_id': v2['version_id']})['id']
+        original_id = a['template']['id']
+        update = self.change('template-update', template_id=original_id, **{**server.EXPERIMENT, 'rule_type': 'resistor-divider',
+                                                                           'principle': '用串联分压关系预测输出。', 'preparation': '记录电阻标称值。'})
+        self.assertEqual(update, a['template'])
+        changed_rule = self.t.post('/api/teaching/template-update', json=op(template_id=original_id, **{**server.EXPERIMENT, 'r1_ohm': 20000}))
+        self.assertEqual(changed_rule.status_code, 409)
+        second = self.change('template', **{**server.EXPERIMENT, 'r1_ohm': 20000})
+        second_publication = {k: v for k, v in a['payload'].items() if k != 'version_id'}
+        aid = self.change('publish', **second_publication, template_id=second['id'])['id']
         b = {**a, 'assignment': aid}
         target = next(x for x in self.catalog()['assignments'] if x['id'] == aid)['targets'][0]
         self.change('team-create', self.s1, scheme_id=target['scheme_id'])
@@ -177,9 +186,46 @@ class TeachingManagement(unittest.TestCase):
         self.assertEqual(ga['latest']['data']['experiment_version_id'], a['template']['version_id'])
         catalog = self.s1.get('/api/catalog').json()
         packages = {item['id']: item['experiment'] for item in catalog['assignments']}
-        self.assertFalse(packages[a['assignment']].get('principle'))
-        self.assertEqual(packages[aid]['principle'], '用串联分压关系预测输出。')
-        self.assertEqual(packages[aid]['preparation'], '记录电阻标称值。')
+        self.assertEqual(packages[a['assignment']]['principle'], '用串联分压关系预测输出。')
+        self.assertEqual(packages[a['assignment']]['preparation'], '记录电阻标称值。')
+        with server.db() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM experiment_versions WHERE template_id=?', (original_id,)).fetchone()[0], 1)
+
+    def test_document_handout_upload_replacement_and_permission(self):
+        a = self.setup_task()
+        pdf = b'%PDF-1.4\n%%EOF\n'
+        def upload(name, blob):
+            return {'filename': name, 'content': base64.b64encode(blob).decode()}
+        creation = {'title': ' ', 'rule_type': 'observation', 'document': upload('课堂讲义.pdf', pdf)}
+        self.assertEqual(self.s1.post('/api/teaching/template', json=op(**creation)).status_code, 403)
+        handout = self.change('template', **creation)
+        teacher_path = '/api/teaching/handouts/'+handout['id']+'/file'
+        self.assertEqual(self.t.get(teacher_path).content, pdf)
+        self.assertEqual(self.s1.get(teacher_path).status_code, 404)
+        assignment = self.change('publish', offering_id=a['offering'], class_ids=[a['cls']], template_id=handout['id'])['id']
+        path = '/api/teaching/assignments/'+assignment+'/handout'
+        student_response = self.s1.get(path)
+        self.assertEqual(student_response.headers['content-type'], 'application/pdf')
+        self.assertIn('attachment', student_response.headers['content-disposition'])
+        self.assertEqual(student_response.content, pdf)
+        self.s2.post('/api/register', json={'username':'doc-outsider','name':'外班学生','password':'Test2026!'})
+        outsider = self.login('doc-outsider','Test2026!')
+        self.assertEqual(outsider.get(path).status_code, 404)
+        info = next(item for item in self.catalog(self.s1)['assignments'] if item['id'] == assignment)
+        self.assertEqual(info['document']['filename'], '课堂讲义.pdf')
+        self.assertNotIn('content', info['document'])
+        word = io.BytesIO()
+        with ZipFile(word, 'w') as archive:
+            archive.writestr('[Content_Types].xml', '<Types/>')
+            archive.writestr('word/document.xml', '<document/>')
+        changed = self.change('template-update', template_id=handout['id'], title='课堂讲义', rule_type='observation',
+                              document=upload('更正讲义.docx', word.getvalue()))
+        self.assertEqual(changed, handout)
+        self.assertEqual(self.s1.get(path).content, word.getvalue())
+        invalid = self.t.post('/api/teaching/template-update', json=op(template_id=handout['id'], title='课堂讲义',
+                                     rule_type='observation',document=upload('伪装文件.docx', pdf)))
+        self.assertEqual(invalid.status_code, 422)
+        self.assertEqual(self.s1.get(path).content, word.getvalue())
 
     def test_dates_archiving_and_unselected_class(self):
         future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()

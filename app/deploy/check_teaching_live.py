@@ -1,9 +1,12 @@
 """Live course/group acceptance using isolated accounts and courses; removes its own data."""
 import argparse
+import base64
+import io
 import os
 import secrets
 import sys
 from pathlib import Path
+from zipfile import ZipFile
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--base-url', required=True)
@@ -86,7 +89,7 @@ try:
     check(len(catalog(s1)['offerings']) == 1, 'student sees enrolled courses only')
     template = change('template', **{**server.EXPERIMENT, 'title': prefix + '分压', 'rule_type': 'resistor-divider'})
     templates.append(template['id'])
-    aid = change('publish', offering_id=oid, class_ids=[cls, cls2], version_id=template['version_id'], min_size=1, max_size=2)['id']
+    aid = change('publish', offering_id=oid, class_ids=[cls, cls2], template_id=template['id'], min_size=1, max_size=2)['id']
     assignment = next(a for a in catalog(teacher)['assignments'] if a['id'] == aid)
     scheme = next(t['scheme_id'] for t in assignment['targets'] if t['class_id'] == cls)
     check(state(s1, aid)['groups'] == [], 'published task awaits grouping')
@@ -102,12 +105,26 @@ try:
     check(s1.post('/api/teaching/team-leave', json={'nonce': server.uid(), 'team_id': team}).status_code == 409, 'started group locked')
     post(teacher, '/api/groups/' + g['id'] + '/message', text='验收指导：核对参考点并补测。')
     check(state(s1, aid)['groups'][0]['events'][-1]['kind'] == 'message', 'teacher message reaches group')
-    v2 = change('template-version', template_id=template['id'], **{**server.EXPERIMENT, 'title': prefix + '分压新版', 'r1_ohm': 20000, 'rule_type': 'resistor-divider'})
-    aid2 = change('publish', offering_id=oid, class_ids=[cls], version_id=v2['version_id'], scheme_ids={cls: scheme})['id']
+    updated = change('template-update', template_id=template['id'], **{**server.EXPERIMENT, 'title': prefix + '分压', 'principle': '按串联分压关系预测输出。', 'rule_type': 'resistor-divider'})
+    check(updated == template and state(s1, aid)['course']['experiment']['principle'] == '按串联分压关系预测输出。', 'published assignment shows the edited handout')
+    second_package = {**server.EXPERIMENT, 'title': prefix + '不等阻值分压', 'r1_ohm': 20000, 'rule_type': 'resistor-divider'}
+    pdf = b'%PDF-1.4\n%%EOF\n'
+    second = change('template', **second_package, document={'filename': '验收讲义.pdf', 'content': base64.b64encode(pdf).decode()})
+    templates.append(second['id'])
+    aid2 = change('publish', offering_id=oid, class_ids=[cls], template_id=second['id'], scheme_ids={cls: scheme})['id']
+    document_url = '/api/teaching/assignments/' + aid2 + '/handout'
+    check(s2.get(document_url).content == pdf and outside.get(document_url).status_code == 404, 'assigned student can download the PDF handout; unrelated teacher cannot')
+    word = io.BytesIO()
+    with ZipFile(word, 'w') as archive:
+        archive.writestr('[Content_Types].xml', '<Types/>')
+        archive.writestr('word/document.xml', '<document/>')
+    changed = change('template-update', template_id=second['id'], **second_package,
+                     document={'filename': '验收讲义.docx', 'content': base64.b64encode(word.getvalue()).decode()})
+    check(changed == second and s2.get(document_url).content == word.getvalue(), 'replacing a handout with Word updates the existing assignment download')
     g2 = record(s2, aid2, '供电3.30V，输出1.10V，黑表笔接TP0')
     check(g2['id'] != g['id'] and g2['team_id'] == g['team_id'], 'same team has independent experiment runs')
     check(g2['latest']['data']['assessment']['expected_v'] == 1.1, 'new task uses new template parameters')
-    check(state(s1, aid)['groups'][0]['latest']['data']['assessment']['expected_v'] == 1.65, 'published template snapshot retained')
+    check(state(s1, aid)['groups'][0]['latest']['data']['assessment']['expected_v'] == 1.65, 'published rule and existing measurements were preserved')
     post(s1, '/api/groups/' + g['id'] + '/revision', revision=1, reason='验收修改实物')
     check(state(s1, aid)['groups'][0]['latest'] is None, 'new physical revision needs retest')
     check(state(s2, aid2)['groups'][0]['revision'] == 1, 'other experiment revision unchanged')

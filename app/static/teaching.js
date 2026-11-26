@@ -1,6 +1,6 @@
 'use strict';
 // Teaching navigation extends the approved experiment workspace; data still comes from one API.
-const T={catalog:null,offeringId:'',assignmentId:'',classId:'',form:{},dialog:'',preview:null,authMode:'login'};
+const T={catalog:null,offeringId:'',assignmentId:'',classId:'',form:{},dialog:'',preview:null,authMode:'login',handoutFile:null};
 const teachingOffering=()=>T.catalog?.offerings.find(o=>o.id===T.offeringId);
 const teachingAssignments=()=>T.catalog?.assignments.filter(a=>a.offering_id===T.offeringId)||[];
 const teachingAssignment=()=>T.catalog?.assignments.find(a=>a.id===T.assignmentId);
@@ -75,7 +75,19 @@ function teachingCourses(){
   const courses=T.catalog.courses,offerings=T.catalog.offerings;
   return `${heading('我的课程','按学期组织课程，复用实验内容，保留教学历史。',`<div class="actions">${B('创建课程','manage:course','primary','book')}${B('开设学期课程','manage:offering','btn')}</div>`)}${!offerings.length?'<div class="empty">先创建课程，再开设学期课程并建立教学班。</div>':''}<div class="course-grid">${offerings.map(o=>`<section class="panel course-card"><div class="row"><span class="small muted">${E(o.term)}</span>${P(o.archived?'已归档':'授课中',o.archived?'':'blue')}</div><h2>${E(o.title)}</h2><p class="small muted">${o.classes.length} 个教学班 · ${T.catalog.assignments.filter(a=>a.offering_id===o.id).length} 个实验任务</p><div class="actions">${B('进入课程','open-offering:'+o.id,'primary')}${B('复制到新学期','clone-offering:'+o.id,'link')}${B(o.archived?'恢复开课':'归档','archive-offering:'+o.id,'link')}</div></section>`).join('')}</div><section class="panel" style="margin-top:20px"><div class="panelhead"><h2>课程库</h2><span class="small muted">同一课程可在不同学期开设</span></div>${courses.map(c=>`<div class="resource-row"><div><strong>${E(c.title)}</strong><p class="small muted">${offerings.filter(o=>o.course_id===c.id).length} 次开课</p></div>${B('开设学期课程','open-course:'+c.id,'link')}</div>`).join('')||'<p class="muted">还没有创建课程。</p>'}</section>`;
 }
-function teachingContent(){return `${heading('实验讲义','编写或起草讲义，核对后按版本发布给学生。',B('创建实验讲义','manage:template','primary','lab'))}<div class="stack">${T.catalog.templates.map(t=>{const v=t.versions[0],p=v.package;return `<section class="panel"><div class="panelhead"><h2>${E(t.title)}</h2>${P('版本 '+v.number,'blue')}</div><p>${E(p.objective)}</p><div class="x-linechips">${P(p.subject||'未分类')}${P(p.steps.length+' 个步骤')}${P(p.rule_type==='observation'?'观察记录':'分压数值判定')}</div><details><summary>查看讲义与历史版本</summary>${handoutMarkup(p)}<div class="x-linechips">${t.versions.map(v=>P('版本 '+v.number+' · '+v.title)).join('')}</div></details><div class="actions" style="margin-top:14px">${B('编辑并保存新版本','edit-template:'+t.id,'btn')}${B('复制内容','copy-template:'+t.id,'link')}${B('发布实验','publish-template:'+v.id,'primary')}</div></section>`}).join('')||'<section class="panel empty">先创建实验内容，再向教学班发布。</section>'}</div>`}
+function teachingContent(){
+  const handouts=T.catalog.templates;
+  const cards=handouts.map(item=>{
+    const p=item.experiment;
+    return `<section class="panel"><h2>${E(item.title)}</h2><p>${E(p.objective)}</p>
+      <div class="x-linechips">${p.subject?P(p.subject):''}${p.steps.length?P(p.steps.length+' 个步骤'):''}${P(p.rule_type==='observation'?'观察记录':'分压数值判定')}${item.document?P('含讲义文件','blue'):''}</div>
+      <details class="handout-preview"><summary>查看讲义</summary>${handoutMarkup(p,item.document,teacherHandoutUrl(item.id))}</details>
+      <div class="actions">${B('编辑讲义','edit-template:'+item.id,'btn')}${B('复制讲义','copy-template:'+item.id,'link')}${B('发布实验','publish-template:'+item.id,'primary')}</div>
+    </section>`;
+  }).join('');
+  return heading('实验讲义','上传 PDF 或 Word，也可在线编写，保存后发布给学生。',B('创建实验讲义','manage:template','primary','lab'))+
+    `<div class="stack">${cards||'<section class="panel empty">先上传或编写实验讲义，再向教学班发布。</section>'}</div>`;
+}
 function teachingClasses(){
   const o=teachingOffering();if(!o)return '<div class="empty">请先选择或开设学期课程。</div>';
   return `${heading('班级与分组',o.title+' · '+o.term,B('建立教学班','manage:class','primary','users',o.archived?'disabled':''))}${o.classes.map(c=>`<section class="panel"><div class="panelhead"><h2>${E(c.name)}</h2><div class="actions">${P(c.students.length+' 位学生','blue')}${B('添加学生','add-roster:'+c.id,'btn','',o.archived?'disabled':'')}</div></div><div class="invite-code">班级邀请码 <strong>${E(c.join_code)}</strong><span class="small muted">学生注册并登录后，使用此码加入。</span></div><details><summary>查看学生名单</summary>${c.students.length?`<div class="roster-list">${c.students.map(p=>`<div class="resource-row"><span>${E(p.name)} <span class="small muted">${E(p.username)}</span></span>${B('移出班级','remove-student:'+c.id+':'+p.id,'link','',o.archived?'disabled':'')}</div>`).join('')}</div>`:'<p class="muted">还没有学生，可添加已注册账号或发送邀请码。</p>'}</details>${c.schemes.map(s=>teachingSchemeCard(s,c,o)).join('')}</section>`).join('')||'<section class="panel empty">建立教学班后添加学生，再发布实验。</section>'}<section class="panel" style="margin-top:20px"><div class="panelhead"><h2>协作教师</h2>${B('添加协作教师','manage:collaborator','link','',o.archived?'disabled':'')}</div><p>${o.teachers.map(p=>E(p.name)+'（'+E(p.username)+'）').join('、')}</p></section>`;
@@ -86,7 +98,7 @@ function teachingSchemeCard(s,c,o){
 }
 function teachingTasks(){
   const o=teachingOffering();if(!o)return '<div class="empty">请先选择学期课程。</div>';
-  return `${heading('实验任务',o.title+' · '+o.term,B('发布实验','manage:publish','primary','file',o.archived?'disabled':''))}<div class="stack">${teachingAssignments().map(a=>`<section class="panel"><div class="panelhead"><h2>${E(a.title)}</h2>${P(a.status==='published'?'已发布':'已结束',a.status==='published'?'blue':'')}</div><p class="small muted">${a.targets.map(t=>E(t.class_name)).join('、')} · 实验版本 ${E(a.experiment.version)}</p><p class="small muted">开放 ${teachingWhen(a.opens_at)} · 截止 ${teachingWhen(a.closes_at)}</p><div class="actions" style="margin-top:14px">${B('查看实验进展','open-assignment:'+a.id,'primary')}${B('分组管理','assignment-groups:'+a.id,'btn')}${B('调整时间或结束任务','schedule:'+a.id,'link','',o.archived?'disabled':'')}</div></section>`).join('')||'<section class="panel empty">先准备实验内容和教学班，再发布第一项任务。</section>'}</div>`;
+  return `${heading('实验任务',o.title+' · '+o.term,B('发布实验','manage:publish','primary','file',o.archived?'disabled':''))}<div class="stack">${teachingAssignments().map(a=>`<section class="panel"><div class="panelhead"><h2>${E(a.title)}</h2>${P(a.status==='published'?'已发布':'已结束',a.status==='published'?'blue':'')}</div><p class="small muted">${a.targets.map(t=>E(t.class_name)).join('、')}${a.document?' · 含讲义文件':''}</p><p class="small muted">开放 ${teachingWhen(a.opens_at)} · 截止 ${teachingWhen(a.closes_at)}</p><div class="actions" style="margin-top:14px">${B('查看实验进展','open-assignment:'+a.id,'primary')}${B('分组管理','assignment-groups:'+a.id,'btn')}${B('调整时间或结束任务','schedule:'+a.id,'link','',o.archived?'disabled':'')}</div></section>`).join('')||'<section class="panel empty">先准备实验内容和教学班，再发布第一项任务。</section>'}</div>`;
 }
 function studentTaskCard(assignment){
   const hasRun=assignment.my_runs.length>0;
@@ -97,7 +109,7 @@ function studentTaskCard(assignment){
   const groupLabel=names.length?'小组：'+names.join('、'):'已选组';
   return `<section class="panel student-task-card">
     <div class="panelhead"><h2>${E(assignment.title)}</h2>${hasRun?P(groupLabel,'blue'):P('待选组')}</div>
-    <p>${E(assignment.experiment.objective)}</p>
+    <p>${E(assignment.experiment.objective||(assignment.document?'请阅读上传的实验讲义。':''))}</p>
     <p class="chart-note">截止 ${teachingWhen(assignment.closes_at)}</p>
     <div class="actions" style="margin-top:14px">
       ${B(hasRun?'进入实验':'选组并开始','student-task:'+assignment.id,'primary')}
@@ -128,22 +140,25 @@ function tf(name,label,type='text',placeholder=''){
   return `<div class="field"><label for="tf-${name}">${label}</label>${type==='textarea'?`<textarea id="tf-${name}" data-field="${name}" placeholder="${E(placeholder)}">${E(value)}</textarea>`:`<input id="tf-${name}" data-field="${name}" type="${type}" ${type==='number'?'step="any"':''} value="${E(value)}" placeholder="${E(placeholder)}">`}</div>`;
 }
 function ts(name,label,options){return `<div class="field"><label for="tf-${name}">${label}</label><select id="tf-${name}" data-field="${name}">${options.map(([v,l])=>`<option value="${E(v)}" ${String(T.form[name]??'')===String(v)?'selected':''}>${E(l)}</option>`).join('')}</select></div>`}
-function teachingOpen(dialog,form={}){T.dialog=dialog;T.form=JSON.parse(JSON.stringify(form));T.preview=null;S.modal='teaching';S.error=''}
+function teachingOpen(dialog,form={}){T.dialog=dialog;T.form=JSON.parse(JSON.stringify(form));T.preview=null;T.handoutFile=null;S.modal='teaching';S.error=''}
 function teachingTermFields(){return ts('term_id','学期',[['','新建学期'],...T.catalog.terms.map(t=>[t.id,t.name])])+(!T.form.term_id?tf('term_name','新学期名称','text','例如：2026至2027学年第二学期'):'')}
+const teacherHandoutUrl=id=>`/api/teaching/handouts/${encodeURIComponent(id)}/file`;
 function teachingHandoutFields(f){
+  const fileName=T.handoutFile?.name||(!f.remove_document&&f.document?.filename);
+  const attachment=`<div class="field"><label for="handout-file">上传 PDF 或 Word 讲义</label><input id="handout-file" type="file" accept=".pdf,.docx,.doc"><p class="small muted">支持 PDF、DOCX、DOC，最大 10 MB。可直接用原文件作为讲义。</p>${fileName?`<div class="actions"><span class="handout-filename">${E(fileName)}</span>${B('移除文件','remove-handout-file','link')}</div>`:''}</div>`;
   const draft=S.data.model_configured?`<div class="panel handout-draft">
     <div class="panelhead"><h3>AI 起草讲义</h3>${B('生成讲义草稿','draft-handout','btn','spark')}</div>
     ${tf('handout_notes','备课要点','textarea','写下实验想让学生学会什么、使用的器材、你已确定的步骤与注意事项。')}
     <p class="small muted">AI 只填空白栏目。请核对原理、步骤、参数和安全事项，再保存或发布。</p>
     ${f.handout_generated?'<p class="small muted" role="status">草稿已整理到空白栏目，请检查并补齐。</p>':''}
   </div>`:'';
-  const fields=tf('title','实验名称')+tf('subject','所属学科','text','例如：电子电路、普通物理')+
-    ts('rule_type','记录与判定方式',[['resistor-divider','电阻分压 · 电压判据'],['observation','通用实验 · 观察记录']])+
+  const fields=tf('subject','所属学科','text','例如：电子电路、普通物理')+
     tf('objective','学习目标','textarea')+tf('principle','实验原理','textarea')+tf('materials','器材与材料','textarea')+
     tf('preparation','课前准备','textarea')+tf('steps_text','实验步骤（每行一步）','textarea')+
     tf('safety','操作注意事项','textarea')+tf('report_instructions','报告要求','textarea');
-  if(f.rule_type!=='resistor-divider')return draft+fields;
-  return draft+fields+`<details><summary>分压参数与数值判据</summary><p class="small muted">测点固定为 TP0 参考地、TP1 供电、TP2 输出。用于 0–5 V 低压教学。</p><div class="extract-fields">${tf('r1_ohm','R1，Ω','number')}${tf('r2_ohm','R2，Ω','number')}${tf('supply_min_v','供电下限，V','number')}${tf('supply_max_v','供电上限，V','number')}${tf('tolerance_v','输出容许偏差，V','number')}</div></details>`;
+  const parameters=f.rule_type==='resistor-divider'?`<details><summary>分压参数与数值判据</summary><p class="small muted">测点固定为 TP0 参考地、TP1 供电、TP2 输出。用于 0–5 V 低压教学。</p><div class="extract-fields">${tf('r1_ohm','R1，Ω','number')}${tf('r2_ohm','R2，Ω','number')}${tf('supply_min_v','供电下限，V','number')}${tf('supply_max_v','供电上限，V','number')}${tf('tolerance_v','输出容许偏差，V','number')}</div></details>`:'';
+  const rules=`<fieldset class="handout-rules" ${f.in_use?'disabled':''}>${ts('rule_type','记录与判定方式',[['resistor-divider','电阻分压 · 电压判据'],['observation','通用实验 · 观察记录']])}${parameters}</fieldset>${f.in_use?'<p class="small muted">已用于实验。讲义正文和附件可更新，判定方式与参数已固定。</p>':''}`;
+  return attachment+tf('title','实验名称')+`<details class="handout-preview" ${fileName?'':'open'}><summary>编写讲义正文与设置</summary>${draft}${fields}${rules}</details>`;
 }
 function teachingDialog(){
   let title='',body='',button='保存';const f=T.form,o=teachingOffering();
@@ -156,14 +171,14 @@ function teachingDialog(){
     case 'roster':title='添加学生名单';body='<p>填写已注册学生账号，一行一个；也可粘贴“账号 姓名”或 CSV 的账号列。</p>'+tf('roster','学生账号','textarea','student1 林同学\nstudent2 陈同学');break;
     case 'remove-student':title='移出教学班';body=`<p>确认将 ${E(f.label)} 移出当前教学班？历史实验记录保留作者。</p>`+tf('reason','调整原因（已开始实验时必填）','textarea');button='确认移出';break;
     case 'collaborator':title='添加协作教师';body='<p>添加后，该教师可查看并管理本次开课的教学班与实验。</p>'+tf('username','教师账号');break;
-    case 'template':case 'template-version':
-      title=T.dialog==='template'?'创建实验讲义':'编辑实验讲义';body=teachingHandoutFields(f);button='保存讲义版本';break;
-    case 'template-copy':title='复制实验内容';body=tf('title','副本名称');break;
+    case 'template':case 'template-update':
+      title=T.dialog==='template'?'创建实验讲义':'编辑实验讲义';body=teachingHandoutFields(f);button='保存讲义';break;
+    case 'template-copy':title='复制实验讲义';body=tf('title','副本名称');break;
     case 'publish':
       title=T.preview?'核对实验发布':'发布实验';button=T.preview?'确认发布':'预览发布';
       if(T.preview){body=teachingPublishPreview();break}
-      body=ts('version_id','实验内容版本',T.catalog.templates.flatMap(t=>t.versions.map(v=>[v.id,v.title+' · 版本 '+v.number])))+tf('title','任务名称（可选）')+'<label>发布到教学班</label><div class="target-list">'+(o?.classes||[]).map(c=>`<div class="target-row"><label class="class-choice"><input type="checkbox" data-list="class_ids" value="${c.id}" ${(f.class_ids||[]).includes(c.id)?'checked':''}>${E(c.name)}</label><select aria-label="${E(c.name)}分组" data-field="scheme_${c.id}"><option value="">为本任务新建分组</option>${c.schemes.map(s=>`<option value="${s.id}" ${f['scheme_'+c.id]===s.id?'selected':''}>复用：${E(s.name)}（${s.min_size}–${s.max_size}人）</option>`).join('')}</select></div>`).join('')+'</div><div class="extract-fields">'+tf('opens_at','开放时间（留空立即开放）','datetime-local')+tf('closes_at','实验截止（可选）','datetime-local')+'</div><details open><summary>新分组的设置</summary>'+ts('mode','分组方式',[['self','学生自主选组'],['assigned','教师安排 / 系统分配']])+'<div class="extract-fields">'+tf('min_size','最少人数','number')+tf('max_size','最多人数','number')+'</div>'+tf('selection_deadline','选组截止（留空采用实验截止）','datetime-local')+'<label class="class-choice"><input type="checkbox" data-field="allow_create" '+(f.allow_create?'checked':'')+'>允许学生创建小组</label></details>';break;
-    case 'schedule':title='调整实验时间与状态';body=tf('opens_at','开放时间','datetime-local')+tf('closes_at','截止时间','datetime-local')+ts('status','任务状态',[['published','开放任务'],['closed','结束任务']])+'<p class="small muted">选组截止在班级与分组中单独调整；实验内容版本保持原引用。</p>';break;
+      body=ts('template_id','实验讲义',T.catalog.templates.map(t=>[t.id,t.title]))+tf('title','任务名称（可选）')+'<label>发布到教学班</label><div class="target-list">'+(o?.classes||[]).map(c=>`<div class="target-row"><label class="class-choice"><input type="checkbox" data-list="class_ids" value="${c.id}" ${(f.class_ids||[]).includes(c.id)?'checked':''}>${E(c.name)}</label><select aria-label="${E(c.name)}分组" data-field="scheme_${c.id}"><option value="">为本任务新建分组</option>${c.schemes.map(s=>`<option value="${s.id}" ${f['scheme_'+c.id]===s.id?'selected':''}>复用：${E(s.name)}（${s.min_size}–${s.max_size}人）</option>`).join('')}</select></div>`).join('')+'</div><div class="extract-fields">'+tf('opens_at','开放时间（留空立即开放）','datetime-local')+tf('closes_at','实验截止（可选）','datetime-local')+'</div><details open><summary>新分组的设置</summary>'+ts('mode','分组方式',[['self','学生自主选组'],['assigned','教师安排 / 系统分配']])+'<div class="extract-fields">'+tf('min_size','最少人数','number')+tf('max_size','最多人数','number')+'</div>'+tf('selection_deadline','选组截止（留空采用实验截止）','datetime-local')+'<label class="class-choice"><input type="checkbox" data-field="allow_create" '+(f.allow_create?'checked':'')+'>允许学生创建小组</label></details>';break;
+    case 'schedule':title='调整实验时间与状态';body=tf('opens_at','开放时间','datetime-local')+tf('closes_at','截止时间','datetime-local')+ts('status','任务状态',[['published','开放任务'],['closed','结束任务']])+'<p class="small muted">选组截止在班级与分组中单独调整；所选讲义保持原引用。</p>';break;
     case 'team-create':title='建立小组';body=tf('name','小组名称','text','可填写组名，留空使用默认名称');break;
     case 'member':{
       title='调整小组成员';const team=teachingTeam(f.team_id),scheme=teachingScheme(team.scheme_id),cls=teachingClass(scheme.class_id);
@@ -180,8 +195,8 @@ function teachingDialog(){
   return `<div class="overlay"><section class="dialog teaching-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="panelhead"><h2 id="dialog-title">${E(title)}</h2><button class="close" data-action="close" aria-label="关闭">${I('close')}</button></div>${body}${S.error?`<div class="error" role="alert">${E(S.error)}</div>`:''}<div class="actions dialog-actions">${B(button,'teaching-save','primary')}${T.preview?B('返回修改','publish-edit','btn'):B('取消','close','link')}</div></section></div>`;
 }
 function teachingPublishPreview(){
-  const d=T.preview,v=T.catalog.templates.flatMap(t=>t.versions).find(v=>v.id===d.version_id);
-  return `<div class="publish-review"><h3>${E(d.title||v?.title)}</h3><p>${E(teachingOffering()?.title)} · ${E(teachingOffering()?.term)}</p><p>内容版本：${E(v?.number)}</p><p>开放：${teachingWhen(d.opens_at)}<br>截止：${teachingWhen(d.closes_at)}</p>${d.class_ids.map(id=>{const s=teachingScheme(d.scheme_ids[id]);return `<div class="notice"><strong>${E(teachingClass(id)?.name)}</strong><br>${s?'复用 '+E(s.name)+' · '+s.min_size+'–'+s.max_size+' 人 / 组':'新分组 · '+d.min_size+'–'+d.max_size+' 人 / 组 · '+(d.mode==='self'?'学生自主选组':'教师安排')}<br>选组截止 ${teachingWhen(s?s.deadline:d.selection_deadline||d.closes_at)}</div>`}).join('')}${v?`<details class="handout-preview"><summary>预览学生看到的讲义</summary>${handoutMarkup(v.package)}</details>`:''}<p class="small muted">确认后向所选教学班发布，并固定引用这版讲义。</p></div>`;
+  const d=T.preview,handout=T.catalog.templates.find(t=>t.id===d.template_id);
+  return `<div class="publish-review"><h3>${E(d.title||handout?.title)}</h3><p>${E(teachingOffering()?.title)} · ${E(teachingOffering()?.term)}</p><p>开放：${teachingWhen(d.opens_at)}<br>截止：${teachingWhen(d.closes_at)}</p>${d.class_ids.map(id=>{const s=teachingScheme(d.scheme_ids[id]);return `<div class="notice"><strong>${E(teachingClass(id)?.name)}</strong><br>${s?'复用 '+E(s.name)+' · '+s.min_size+'–'+s.max_size+' 人 / 组':'新分组 · '+d.min_size+'–'+d.max_size+' 人 / 组 · '+(d.mode==='self'?'学生自主选组':'教师安排')}<br>选组截止 ${teachingWhen(s?s.deadline:d.selection_deadline||d.closes_at)}</div>`}).join('')}${handout?`<details class="handout-preview"><summary>预览学生看到的讲义</summary>${handoutMarkup(handout.experiment,handout.document,teacherHandoutUrl(handout.id))}</details>`:''}<p class="small muted">确认后向所选教学班发布。讲义更新后，学生可打开当前内容。</p></div>`;
 }
 
 function teachingReset(){
@@ -191,6 +206,17 @@ function teachingReset(){
 async function teachingManage(action,data){return api('/teaching/'+action,command(data))}
 async function teachingChange(event){
   const el=event.target;
+  if(el.id==='handout-file'){
+    if(S.busy||!el.files[0])return;
+    capture();
+    const file=el.files[0];
+    if(!/\.(pdf|docx|doc)$/i.test(file.name)||file.size>10*1024*1024){
+      S.error='请选择 10 MB 以内的 PDF 或 Word 文件。';render();return;
+    }
+    T.handoutFile=file;T.form.remove_document=false;S.error='';
+    if(!T.form.title?.trim())T.form.title=file.name.replace(/\.[^.]+$/,'').slice(0,120);
+    render();return;
+  }
   if(el.dataset.context){
     if(S.busy)return;
     capture();teachingReset();S.busy=true;
@@ -212,15 +238,16 @@ async function teachingSave(){
   if(kind==='clone')payload={offering_id:f.offering_id,term_id:f.term_id,term_name:f.term_name};
   if(kind==='class')payload={offering_id:T.offeringId,name:f.name};
   if(kind==='roster')payload={class_id:f.class_id,usernames:(f.roster||'').split(/\r?\n/).map(x=>x.trim().split(/[,，\s]+/)[0].replace(/^["']|["']$/g,'')).filter(x=>x&&!['username','学号','账号'].includes(x.toLowerCase()))};
-  if(kind==='template'||kind==='template-version'){
-    const {handout_notes,handout_generated,steps_text,...fields}=f;
+  if(kind==='template'||kind==='template-update'){
+    const {handout_notes,handout_generated,steps_text,document:currentFile,in_use,...fields}=f;
     payload={...fields,steps:(steps_text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)};
+    if(T.handoutFile)payload.document={filename:T.handoutFile.name,content:await fileBase64(T.handoutFile)};
   }
   if(kind==='publish'){
     if(!T.preview){
       const ids=f.class_ids||[];if(!ids.length)throw new Error('请至少选择一个教学班');
       if(!Number.isInteger(Number(f.min_size))||!Number.isInteger(Number(f.max_size))||Number(f.min_size)<1||Number(f.max_size)>30||Number(f.min_size)>Number(f.max_size))throw new Error('组员人数须为1至30之间的整数，最少人数不能大于最多人数');
-      T.preview={offering_id:T.offeringId,title:f.title||'',version_id:f.version_id,class_ids:ids,scheme_ids:Object.fromEntries(ids.map(id=>[id,f['scheme_'+id]||''])),min_size:Number(f.min_size),max_size:Number(f.max_size),mode:f.mode,allow_create:!!f.allow_create,opens_at:teachingDate(f.opens_at),closes_at:teachingDate(f.closes_at),selection_deadline:teachingDate(f.selection_deadline)};
+      T.preview={offering_id:T.offeringId,title:f.title||'',template_id:f.template_id,class_ids:ids,scheme_ids:Object.fromEntries(ids.map(id=>[id,f['scheme_'+id]||''])),min_size:Number(f.min_size),max_size:Number(f.max_size),mode:f.mode,allow_create:!!f.allow_create,opens_at:teachingDate(f.opens_at),closes_at:teachingDate(f.closes_at),selection_deadline:teachingDate(f.selection_deadline)};
       return;
     }
     payload=T.preview;
@@ -235,7 +262,7 @@ async function teachingSave(){
     payload={join_code:code};
   }
   const result=await teachingManage(action,payload);
-  S.modal=null;T.preview=null;T.form={};
+  S.modal=null;T.preview=null;T.form={};T.handoutFile=null;
   if(kind==='offering'||kind==='clone'){T.offeringId=result.id;T.assignmentId='';T.classId='';S.view='classes'}
   if(kind==='course'||kind==='archive')S.view='courses';
   if(kind.startsWith('template'))S.view='content';
@@ -247,16 +274,20 @@ async function teachingSave(){
 }
 async function teachingAction(name){
   const [a,v,extra]=name.split(':');
+  if(a==='remove-handout-file'){
+    T.handoutFile=null;T.form.remove_document=!!T.form.document;return true;
+  }
+  if(a==='close')T.handoutFile=null;
   if(a==='logout'){T.catalog=null;T.authMode='login';return false}
   if(a==='register-open'){T.authMode='register';T.form={};S.error='';return true}
   if(a==='register-cancel'){T.authMode='login';S.error='';return true}
   if(a==='read-handout'){
     const task=T.catalog?.assignments.find(assignment=>assignment.id===v);
     if(!task)throw new Error('未找到可查看的实验讲义。');
-    S.handout=task.experiment;S.modal='instructions';return true;
+    S.handout=task;S.modal='instructions';return true;
   }
   if(a==='draft-handout'){
-    if(!['template','template-version'].includes(T.dialog))return true;
+    if(!['template','template-update'].includes(T.dialog))return true;
     if(!T.form.handout_notes?.trim())throw new Error('请先填写备课要点。');
     toast('正在整理实验讲义草稿…');
     const {draft}=await api('/teaching/handout-draft',{notes:T.form.handout_notes});
@@ -276,8 +307,8 @@ async function teachingAction(name){
     }
     if(v==='publish'){
       if(!teachingOffering()?.classes.length)throw new Error('请先为当前开课建立教学班');
-      const version=T.catalog.templates[0]?.versions[0];if(!version)throw new Error('请先创建实验内容');
-      Object.assign(defaults,{version_id:version.id,class_ids:[],min_size:1,max_size:4,allow_create:true,mode:'self'});
+      const handout=T.catalog.templates[0];if(!handout)throw new Error('请先创建实验讲义');
+      Object.assign(defaults,{template_id:handout.id,class_ids:[],min_size:1,max_size:4,allow_create:true,mode:'self'});
     }
     if(v==='template')Object.assign(defaults,{title:'',subject:'',objective:'',steps_text:'',rule_type:'observation',r1_ohm:10000,r2_ohm:10000,supply_min_v:3.2,supply_max_v:3.4,tolerance_v:.05});
     teachingOpen(v,defaults);return true;
@@ -287,9 +318,9 @@ async function teachingAction(name){
   if(a==='archive-offering'){const o=T.catalog.offerings.find(o=>o.id===v);teachingOpen('archive',{offering_id:v,archived:!o.archived,label:o.term+' · '+o.title});return true}
   if(a==='add-roster'){teachingOpen('roster',{class_id:v});return true}
   if(a==='remove-student'){const p=teachingClass(v).students.find(p=>p.id===extra);teachingOpen('remove-student',{class_id:v,user_id:extra,label:p.name});return true}
-  if(a==='edit-template'){const t=T.catalog.templates.find(t=>t.id===v),p=t.versions[0].package;teachingOpen('template-version',{...p,template_id:t.id,steps_text:p.steps.join('\n')});return true}
+  if(a==='edit-template'){const t=T.catalog.templates.find(t=>t.id===v),p=t.experiment;teachingOpen('template-update',{...p,template_id:t.id,document:t.document,in_use:t.in_use,steps_text:p.steps.join('\n')});return true}
   if(a==='copy-template'){const t=T.catalog.templates.find(t=>t.id===v);teachingOpen('template-copy',{template_id:v,title:t.title+'副本'});return true}
-  if(a==='publish-template'){await teachingAction('manage:publish');T.form.version_id=v;return true}
+  if(a==='publish-template'){await teachingAction('manage:publish');T.form.template_id=v;return true}
   if(a==='schedule'){const t=T.catalog.assignments.find(t=>t.id===v);teachingOpen('schedule',{assignment_id:v,opens_at:teachingLocal(t.opens_at),closes_at:teachingLocal(t.closes_at),status:t.status});return true}
   if(a==='teacher-team'||a==='student-team'){teachingOpen('team-create',{scheme_id:v});return true}
   if(a==='edit-members'){

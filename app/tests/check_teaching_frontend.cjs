@@ -12,8 +12,9 @@ const team={id:'team1',scheme_id:'scheme1',name:'自主小组',locked:0,members:
 const scheme={id:'scheme1',class_id:'class1',name:'实验分组',min_size:1,max_size:4,mode:'self',allow_create:1,deadline:null,teams:[team]};
 const cls={id:'class1',name:'教学班',join_code:'012345',students:[member],schemes:[scheme]};
 const offering={id:'offering1',course_id:'course1',title:'电路基础<script>unsafe</script>',term:'2026秋季',archived:0,classes:[cls],teachers:[{id:'teacher',name:'周老师',username:'teacher'}]};
-const task={id:'assignment1',offering_id:'offering1',title:'分压实验任务',status:'published',opens_at:null,closes_at:null,version_id:'version1',experiment:p,targets:[{class_id:'class1',class_name:'教学班',scheme_id:'scheme1'}],my_runs:[]};
-const catalog={user:{id:'teacher',role:'teacher',name:'周老师'},offerings:[offering],courses:[{id:'course1',title:offering.title}],terms:[{id:'term1',name:'2026秋季'}],templates:[{id:'template1',title:p.title,versions:[{id:'version1',number:1,title:p.title,package:p}]}],assignments:[task]};
+const attachment={filename:'实验讲义.pdf',mime:'application/pdf',size:32};
+const task={id:'assignment1',offering_id:'offering1',title:'分压实验任务',status:'published',opens_at:null,closes_at:null,template_id:'template1',document:attachment,experiment:p,targets:[{class_id:'class1',class_name:'教学班',scheme_id:'scheme1'}],my_runs:[]};
+const catalog={user:{id:'teacher',role:'teacher',name:'周老师'},offerings:[offering],courses:[{id:'course1',title:offering.title}],terms:[{id:'term1',name:'2026秋季'}],templates:[{id:'template1',title:p.title,experiment:p,document:attachment,in_use:true}],assignments:[task]};
 const group={id:'run1',name:'自主小组',team_id:'team1',assignment_id:'assignment1',revision:1,status:'working',help:0,member_count:1,min_size:1,members:['林同学'],events:[],latest:null,opens_at:null,closes_at:null,assignment_status:'published',archived:0};
 const data={user:catalog.user,course:{id:'course1',title:offering.title,experiment:p},assignment:task,groups:[group],model_configured:false};
 async function main(){
@@ -42,7 +43,22 @@ async function main(){
   await run("teachingAction('draft-handout')");run('render()');
   assert.equal(run('T.form.title'),'教师已写的标题');
   assert.equal(run('T.form.steps_text'),'记录条件');
-  assert.match(root.innerHTML,/保存讲义版本/);
+  assert.match(root.innerHTML,/保存讲义/);
+  assert.match(root.innerHTML,/accept="\.pdf,\.docx,\.doc"/);
+  await run("teachingChange({target:{id:'handout-file',files:[{name:'自制讲义.docx',size:40}]}})");
+  assert.match(root.innerHTML,/自制讲义\.docx/);
+  assert.equal(run('T.form.title'),'教师已写的标题');
+  context.FileReader=class{readAsDataURL(){this.result='data:application/octet-stream;base64,dGVzdA==';this.onload()}};
+  let savedDocument;
+  context.fetch=async(path,opts)=>({ok:true,status:200,json:async()=>{
+    if(path==='/api/catalog')return catalog;
+    if(path.startsWith('/api/state'))return data;
+    assert.equal(path,'/api/teaching/template');
+    savedDocument=JSON.parse(opts.body).document;
+    return {id:'template1'};
+  }});
+  await run('teachingSave()');
+  assert.deepEqual(savedDocument,{filename:'自制讲义.docx',content:'dGVzdA=='});
   await run("teachingAction('manage:publish')");
   run('T.form.class_ids=["class1"];S.busy=true');
   let requests=[];
@@ -54,7 +70,8 @@ async function main(){
   await run('teachingSave()');
   assert.equal(requests.filter(([path])=>path==='/api/teaching/publish').length,1);
   const payload=JSON.parse(requests.find(([path])=>path==='/api/teaching/publish')[1].body);
-  assert.deepEqual(payload.class_ids,['class1']);assert.equal(payload.version_id,'version1');
+  assert.deepEqual(payload.class_ids,['class1']);assert.equal(payload.template_id,'template1');
+  assert.equal(payload.version_id,undefined);
   run('S.busy=false;S.view="classes";render()');
   const changedCatalog=JSON.parse(JSON.stringify(catalog));
   changedCatalog.offerings[0].classes[0].students.push({id:'student2',username:'student2',name:'刚加入班级的学生'});
@@ -105,6 +122,7 @@ async function main(){
   await run("teachingAction('read-handout:assignment1')");run('render()');
   assert.match(root.innerHTML,/<h3>学习目标<\/h3>/);
   assert.match(root.innerHTML,/<li>测量<\/li>/);
+  assert.match(root.innerHTML,/\/api\/teaching\/assignments\/assignment1\/handout" download>下载 实验讲义\.pdf/);
   assert.equal(run('S.view'),'tasks','Students can read the handout from the task list before grouping');
   await run("action('close')");
   const secondScheme={...scheme,id:'scheme2',teams:[

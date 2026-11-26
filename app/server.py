@@ -587,7 +587,7 @@ async def media_analysis(gid: str, request: Request):
 def rule_guidance(g):
     package = g.get('experiment', EXPERIMENT)
     if package.get('rule_type') == 'observation':
-        return '请围绕“' + package.get('objective', '实验目标') + '”记录观察、条件和证据，再说明这些证据如何支持结论。当前实验采用观察记录方式，数值判据待教师补充。'
+        return '请围绕“' + (package.get('objective') or package['title']) + '”记录观察、条件和证据，再说明这些证据如何支持结论。当前实验采用观察记录方式，数值判据待教师补充。'
     latest = g["latest"]
     if not latest:
         return "当前修订还没有测量依据。请先记录 TP1 对 TP0 的供电电压，再记录 TP2 对 TP0 的输出电压，并保留数值与单位。"
