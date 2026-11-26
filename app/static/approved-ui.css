@@ -52,6 +52,15 @@
 #lab-v2 .student-experiment-group strong{overflow-wrap:anywhere;min-width:0}
 #lab-v2 .student-experiment-group p{margin:8px 0 0;overflow-wrap:anywhere}
 #lab-v2 .student-task-card .x-pill{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+#lab-v2 .experiment-handout{display:grid;gap:15px;text-align:left}
+#lab-v2 .experiment-handout>h3{font-size:20px;margin:0}
+#lab-v2 .handout-section h3{font-size:15px;margin:0 0 5px}
+#lab-v2 .handout-section p,#lab-v2 .handout-section li{white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+#lab-v2 .handout-section ol{margin:0;padding-inline-start:24px}
+#lab-v2 .handout-section li+li{margin-top:6px}
+#lab-v2 .handout-preview{margin:16px 0}
+#lab-v2 .handout-preview .experiment-handout{margin-top:14px}
+#lab-v2 .handout-draft{background:var(--soft);border-color:var(--line);margin-bottom:18px}
 #lab-v2 .student-profile{display:flex;align-items:center;gap:14px;margin-top:18px}
 #lab-v2 .student-profile .x-avatar{width:48px;height:48px;flex-shrink:0;font-size:20px}
 #lab-v2 .student-profile p{margin:6px 0 0}

@@ -229,6 +229,26 @@ class TeachingWorkflow(unittest.TestCase):
         self.assertEqual(latest['data']['assessment'],self.group()['latest']['data']['assessment'])
         self.assertEqual(len(self.group()['events']),1,'Model draft must not send a message or mutate measurements')
 
+    def test_teacher_ai_handout_draft_requires_review_and_does_not_save(self):
+        route = '/api/teaching/handout-draft'
+        payload = {'notes': '观察摆长与周期，先记录条件，再核对观察。'}
+        before = self.teacher.get('/api/catalog').json()['templates']
+        mock_answer = '```json\n' + json.dumps({'title': '单摆实验', 'steps': ['记录条件'], 'materials': ['摆球', '秒表'], 'principle': '比较摆长与周期', 'safety': None}, ensure_ascii=False) + '\n```'
+        with patch.dict(os.environ, {'LAB_AI_KEY': 'test-key', 'LAB_AI_MODEL': 'qwen-plus'}), patch.object(server, 'complete', new_callable=AsyncMock, return_value=mock_answer) as call:
+            self.assertEqual(self.s1.post(route, json=payload).status_code, 403)
+            self.assertEqual(self.teacher.post(route, json={'notes': ' '}).status_code, 422)
+            call.assert_not_called()
+            draft = self.teacher.post(route, json=payload).json()['draft']
+            self.assertEqual(draft['title'], '单摆实验')
+            self.assertEqual(draft['steps'], ['记录条件'])
+            self.assertEqual(draft['materials'], '摆球\n秒表')
+            self.assertFalse(draft['safety'])
+            self.assertEqual(json.loads(call.call_args.args[2]), payload)
+            self.assertTrue(call.call_args.kwargs['json_object'])
+            call.return_value = 'not a draft'
+            self.assertEqual(self.teacher.post(route, json=payload).status_code, 502)
+        self.assertEqual(self.teacher.get('/api/catalog').json()['templates'], before)
+
 class MeasurementSemantics(unittest.TestCase):
     def test_inclusive_boundary_and_supply_range(self):
         for vin,out,code in [('3.30','1.600','pass'),('3.30','1.700','pass'),('3.30','1.5999','low'),('3.30','1.7001','high'),('3.20','1.6','pass'),('3.40','1.7','pass'),('3.1999','1.6','supply')]:

@@ -31,6 +31,18 @@ async function main(){
   for(const command of ['clone-offering:offering1','archive-offering:offering1','add-roster:class1','remove-student:class1:student1','edit-template:template1','copy-template:template1','schedule:assignment1','teacher-team:scheme1','edit-members:team1','auto-assign:scheme1','scheme-deadline:scheme1']){
     await run(`teachingAction('${command}')`);run('render()');assert.ok(!root.innerHTML.includes('undefined'),command);
   }
+  await run("teachingAction('manage:template')");
+  run('S.data.model_configured=true;T.form.title="教师已写的标题";T.form.handout_notes="记录单摆周期";render()');
+  assert.match(root.innerHTML,/生成讲义草稿/);
+  context.fetch=async(path,opts)=>{
+    assert.equal(path,'/api/teaching/handout-draft');
+    assert.deepEqual(JSON.parse(opts.body),{notes:'记录单摆周期'});
+    return {ok:true,json:async()=>({draft:{title:'替代标题',principle:'记录与比较',steps:['记录条件']}})};
+  };
+  await run("teachingAction('draft-handout')");run('render()');
+  assert.equal(run('T.form.title'),'教师已写的标题');
+  assert.equal(run('T.form.steps_text'),'记录条件');
+  assert.match(root.innerHTML,/保存讲义版本/);
   await run("teachingAction('manage:publish')");
   run('T.form.class_ids=["class1"];S.busy=true');
   let requests=[];
@@ -38,6 +50,7 @@ async function main(){
   await run('teachingSave()');
   assert.equal(requests.length,0,'Preview must not publish');
   run('render()');assert.ok(root.innerHTML.includes('确认发布'));
+  assert.match(root.innerHTML,/预览学生看到的讲义/);
   await run('teachingSave()');
   assert.equal(requests.filter(([path])=>path==='/api/teaching/publish').length,1);
   const payload=JSON.parse(requests.find(([path])=>path==='/api/teaching/publish')[1].body);
@@ -83,6 +96,12 @@ async function main(){
   await run(`action(${JSON.stringify(experimentTab[1])})`);run('render()');
   assert.equal(run('S.view'),'tasks','The experiment tab must return to the task list after visiting My account');
   assert.match(root.innerHTML,/待选组/);
+  assert.match(root.innerHTML,/data-action="read-handout:assignment1"/);
+  await run("teachingAction('read-handout:assignment1')");run('render()');
+  assert.match(root.innerHTML,/<h3>学习目标<\/h3>/);
+  assert.match(root.innerHTML,/<li>测量<\/li>/);
+  assert.equal(run('S.view'),'tasks','Students can read the handout from the task list before grouping');
+  await run("action('close')");
   const secondScheme={...scheme,id:'scheme2',teams:[
     {...team,id:'team2',scheme_id:'scheme2',name:'测量<二组>',mine:true},
     {...team,id:'team3',scheme_id:'scheme2',name:'另一个小组',mine:false},

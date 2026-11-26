@@ -297,6 +297,8 @@ class Teaching:
         if not isinstance(steps, list) or not 1 <= len(steps) <= 30 or any(not isinstance(x, str) or not x.strip() or len(x) > 400 for x in steps):
             raise HTTPException(422, '请填写一至三十个实验步骤，每步不超过400字')
         p = {'id': kind, 'version': str(number), 'rule_type': kind, 'title': self.text(data, 'title', 120), 'subject': self.text(data, 'subject', 80), 'objective': self.text(data, 'objective', 3000), 'steps': [x.strip() for x in steps], 'materials': self.text(data, 'materials', 3000, False), 'safety': self.text(data, 'safety', 3000, False), 'report_instructions': self.text(data, 'report_instructions', 3000, False)}
+        p['principle'] = self.text(data, 'principle', 3000, False)
+        p['preparation'] = self.text(data, 'preparation', 3000, False)
         if kind == 'resistor-divider':
             p.update(r1_ohm=self.number(data, 'r1_ohm', 10000, 1, 1e9), r2_ohm=self.number(data, 'r2_ohm', 10000, 1, 1e9), supply_min_v=self.number(data, 'supply_min_v', 3.2, 0, 5), supply_max_v=self.number(data, 'supply_max_v', 3.4, 0, 5), tolerance_v=self.number(data, 'tolerance_v', .05, .000001, 5), points={'TP0': '参考地', 'TP1': '供电', 'TP2': '分压输出'}, formula='Vout = Vin × R2 / (R1 + R2)')
             if p['supply_min_v'] >= p['supply_max_v']:

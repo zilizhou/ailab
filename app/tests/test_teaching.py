@@ -163,7 +163,8 @@ class TeachingManagement(unittest.TestCase):
     def test_template_versions_and_parameterized_rules(self):
         a = self.setup_task()
         self.change('team-create', self.s1, scheme_id=a['scheme'])
-        v2 = self.change('template-version', template_id=a['template']['id'], **{**server.EXPERIMENT, 'r1_ohm': 20000, 'rule_type': 'resistor-divider'})
+        v2 = self.change('template-version', template_id=a['template']['id'], **{**server.EXPERIMENT, 'r1_ohm': 20000, 'rule_type': 'resistor-divider',
+                                                                               'principle': '用串联分压关系预测输出。', 'preparation': '记录电阻标称值。'})
         aid = self.change('publish', **{**a['payload'], 'version_id': v2['version_id']})['id']
         b = {**a, 'assignment': aid}
         target = next(x for x in self.catalog()['assignments'] if x['id'] == aid)['targets'][0]
@@ -172,6 +173,11 @@ class TeachingManagement(unittest.TestCase):
         self.assertEqual(ga['latest']['data']['assessment']['expected_v'], 1.65)
         self.assertEqual(gb['latest']['data']['assessment']['expected_v'], 1.1)
         self.assertEqual(ga['latest']['data']['experiment_version_id'], a['template']['version_id'])
+        catalog = self.s1.get('/api/catalog').json()
+        packages = {item['id']: item['experiment'] for item in catalog['assignments']}
+        self.assertFalse(packages[a['assignment']].get('principle'))
+        self.assertEqual(packages[aid]['principle'], '用串联分压关系预测输出。')
+        self.assertEqual(packages[aid]['preparation'], '记录电阻标称值。')
 
     def test_dates_archiving_and_unselected_class(self):
         future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()

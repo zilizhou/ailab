@@ -55,7 +55,7 @@ function teachingContext(){
 }
 function teachingSidebar(){
   const nav=(id,label,icon)=>`<button class="${S.view===id||(id==='overview'&&S.view==='group')?'on':''}" data-action="view:${id}">${I(icon)}${label}</button>`;
-  return `<aside class="x-side"><span class="x-sidelabel">教学资源</span>${nav('courses','我的课程','book')}${nav('content','实验内容','lab')}<span class="x-sidelabel teaching-navlabel">当前课程</span>${nav('overview','教学总览','grid')}${nav('classes','班级与分组','users')}${nav('tasks','实验任务','file')}${nav('reports','实验提交','check')}${nav('assist','AI 助教','spark')}<div class="x-sidefoot">${E(teachingOffering()?.term||'选择学期课程')}<br>${E(teachingOffering()?.title||'开始教学准备')}</div></aside>`;
+  return `<aside class="x-side"><span class="x-sidelabel">教学资源</span>${nav('courses','我的课程','book')}${nav('content','实验讲义','lab')}<span class="x-sidelabel teaching-navlabel">当前课程</span>${nav('overview','教学总览','grid')}${nav('classes','班级与分组','users')}${nav('tasks','实验任务','file')}${nav('reports','实验提交','check')}${nav('assist','AI 助教','spark')}<div class="x-sidefoot">${E(teachingOffering()?.term||'选择学期课程')}<br>${E(teachingOffering()?.title||'开始教学准备')}</div></aside>`;
 }
 function teachingShell(){
   const error=S.error?`<div class="error" role="alert">${E(S.error)}</div>`:'';
@@ -75,7 +75,7 @@ function teachingCourses(){
   const courses=T.catalog.courses,offerings=T.catalog.offerings;
   return `${heading('我的课程','按学期组织课程，复用实验内容，保留教学历史。',`<div class="actions">${B('创建课程','manage:course','primary','book')}${B('开设学期课程','manage:offering','btn')}</div>`)}${!offerings.length?'<div class="empty">先创建课程，再开设学期课程并建立教学班。</div>':''}<div class="course-grid">${offerings.map(o=>`<section class="panel course-card"><div class="row"><span class="small muted">${E(o.term)}</span>${P(o.archived?'已归档':'授课中',o.archived?'':'blue')}</div><h2>${E(o.title)}</h2><p class="small muted">${o.classes.length} 个教学班 · ${T.catalog.assignments.filter(a=>a.offering_id===o.id).length} 个实验任务</p><div class="actions">${B('进入课程','open-offering:'+o.id,'primary')}${B('复制到新学期','clone-offering:'+o.id,'link')}${B(o.archived?'恢复开课':'归档','archive-offering:'+o.id,'link')}</div></section>`).join('')}</div><section class="panel" style="margin-top:20px"><div class="panelhead"><h2>课程库</h2><span class="small muted">同一课程可在不同学期开设</span></div>${courses.map(c=>`<div class="resource-row"><div><strong>${E(c.title)}</strong><p class="small muted">${offerings.filter(o=>o.course_id===c.id).length} 次开课</p></div>${B('开设学期课程','open-course:'+c.id,'link')}</div>`).join('')||'<p class="muted">还没有创建课程。</p>'}</section>`;
 }
-function teachingContent(){return `${heading('实验内容库','维护实验目标、步骤、材料与判据，发布时固定版本。',B('创建实验内容','manage:template','primary','lab'))}<div class="stack">${T.catalog.templates.map(t=>{const v=t.versions[0],p=v.package;return `<section class="panel"><div class="panelhead"><h2>${E(t.title)}</h2>${P('版本 '+v.number,'blue')}</div><p>${E(p.objective)}</p><div class="x-linechips">${P(p.subject||'未分类')}${P(p.steps.length+' 个步骤')}${P(p.rule_type==='observation'?'观察记录':'分压数值判定')}</div><details><summary>查看内容与历史版本</summary><p>${E(p.materials||'材料待补充')}</p><ol>${p.steps.map(x=>`<li>${E(x)}</li>`).join('')}</ol><p>${E(p.safety)}</p><p class="small muted">报告要求：${E(p.report_instructions||'由教师在任务中说明')}</p><div class="x-linechips">${t.versions.map(v=>P('版本 '+v.number+' · '+v.title)).join('')}</div></details><div class="actions" style="margin-top:14px">${B('编辑并保存新版本','edit-template:'+t.id,'btn')}${B('复制内容','copy-template:'+t.id,'link')}${B('发布实验','publish-template:'+v.id,'primary')}</div></section>`}).join('')||'<section class="panel empty">先创建实验内容，再向教学班发布。</section>'}</div>`}
+function teachingContent(){return `${heading('实验讲义','编写或起草讲义，核对后按版本发布给学生。',B('创建实验讲义','manage:template','primary','lab'))}<div class="stack">${T.catalog.templates.map(t=>{const v=t.versions[0],p=v.package;return `<section class="panel"><div class="panelhead"><h2>${E(t.title)}</h2>${P('版本 '+v.number,'blue')}</div><p>${E(p.objective)}</p><div class="x-linechips">${P(p.subject||'未分类')}${P(p.steps.length+' 个步骤')}${P(p.rule_type==='observation'?'观察记录':'分压数值判定')}</div><details><summary>查看讲义与历史版本</summary>${handoutMarkup(p)}<div class="x-linechips">${t.versions.map(v=>P('版本 '+v.number+' · '+v.title)).join('')}</div></details><div class="actions" style="margin-top:14px">${B('编辑并保存新版本','edit-template:'+t.id,'btn')}${B('复制内容','copy-template:'+t.id,'link')}${B('发布实验','publish-template:'+v.id,'primary')}</div></section>`}).join('')||'<section class="panel empty">先创建实验内容，再向教学班发布。</section>'}</div>`}
 function teachingClasses(){
   const o=teachingOffering();if(!o)return '<div class="empty">请先选择或开设学期课程。</div>';
   return `${heading('班级与分组',o.title+' · '+o.term,B('建立教学班','manage:class','primary','users',o.archived?'disabled':''))}${o.classes.map(c=>`<section class="panel"><div class="panelhead"><h2>${E(c.name)}</h2><div class="actions">${P(c.students.length+' 位学生','blue')}${B('添加学生','add-roster:'+c.id,'btn','',o.archived?'disabled':'')}</div></div><div class="invite-code">班级邀请码 <strong>${E(c.join_code)}</strong><span class="small muted">学生注册并登录后，使用此码加入。</span></div><details><summary>查看学生名单</summary>${c.students.length?`<div class="roster-list">${c.students.map(p=>`<div class="resource-row"><span>${E(p.name)} <span class="small muted">${E(p.username)}</span></span>${B('移出班级','remove-student:'+c.id+':'+p.id,'link','',o.archived?'disabled':'')}</div>`).join('')}</div>`:'<p class="muted">还没有学生，可添加已注册账号或发送邀请码。</p>'}</details>${c.schemes.map(s=>teachingSchemeCard(s,c,o)).join('')}</section>`).join('')||'<section class="panel empty">建立教学班后添加学生，再发布实验。</section>'}<section class="panel" style="margin-top:20px"><div class="panelhead"><h2>协作教师</h2>${B('添加协作教师','manage:collaborator','link','',o.archived?'disabled':'')}</div><p>${o.teachers.map(p=>E(p.name)+'（'+E(p.username)+'）').join('、')}</p></section>`;
@@ -101,6 +101,7 @@ function studentTaskCard(assignment){
     <p class="chart-note">截止 ${teachingWhen(assignment.closes_at)}</p>
     <div class="actions" style="margin-top:14px">
       ${B(hasRun?'进入实验':'选组并开始','student-task:'+assignment.id,'primary')}
+      ${B('实验讲义','read-handout:'+assignment.id,'link','book')}
       ${hasRun?B('查看分组','student-groups:'+assignment.id,'link'):''}
     </div>
   </section>`;
@@ -129,6 +130,21 @@ function tf(name,label,type='text',placeholder=''){
 function ts(name,label,options){return `<div class="field"><label for="tf-${name}">${label}</label><select id="tf-${name}" data-field="${name}">${options.map(([v,l])=>`<option value="${E(v)}" ${String(T.form[name]??'')===String(v)?'selected':''}>${E(l)}</option>`).join('')}</select></div>`}
 function teachingOpen(dialog,form={}){T.dialog=dialog;T.form=JSON.parse(JSON.stringify(form));T.preview=null;S.modal='teaching';S.error=''}
 function teachingTermFields(){return ts('term_id','学期',[['','新建学期'],...T.catalog.terms.map(t=>[t.id,t.name])])+(!T.form.term_id?tf('term_name','新学期名称','text','例如：2026至2027学年第二学期'):'')}
+function teachingHandoutFields(f){
+  const draft=S.data.model_configured?`<div class="panel handout-draft">
+    <div class="panelhead"><h3>AI 起草讲义</h3>${B('生成讲义草稿','draft-handout','btn','spark')}</div>
+    ${tf('handout_notes','备课要点','textarea','写下实验想让学生学会什么、使用的器材、你已确定的步骤与注意事项。')}
+    <p class="small muted">AI 只填空白栏目。请核对原理、步骤、参数和安全事项，再保存或发布。</p>
+    ${f.handout_generated?'<p class="small muted" role="status">草稿已整理到空白栏目，请检查并补齐。</p>':''}
+  </div>`:'';
+  const fields=tf('title','实验名称')+tf('subject','所属学科','text','例如：电子电路、普通物理')+
+    ts('rule_type','记录与判定方式',[['resistor-divider','电阻分压 · 电压判据'],['observation','通用实验 · 观察记录']])+
+    tf('objective','学习目标','textarea')+tf('principle','实验原理','textarea')+tf('materials','器材与材料','textarea')+
+    tf('preparation','课前准备','textarea')+tf('steps_text','实验步骤（每行一步）','textarea')+
+    tf('safety','操作注意事项','textarea')+tf('report_instructions','报告要求','textarea');
+  if(f.rule_type!=='resistor-divider')return draft+fields;
+  return draft+fields+`<details><summary>分压参数与数值判据</summary><p class="small muted">测点固定为 TP0 参考地、TP1 供电、TP2 输出。用于 0–5 V 低压教学。</p><div class="extract-fields">${tf('r1_ohm','R1，Ω','number')}${tf('r2_ohm','R2，Ω','number')}${tf('supply_min_v','供电下限，V','number')}${tf('supply_max_v','供电上限，V','number')}${tf('tolerance_v','输出容许偏差，V','number')}</div></details>`;
+}
 function teachingDialog(){
   let title='',body='',button='保存';const f=T.form,o=teachingOffering();
   switch(T.dialog){
@@ -140,7 +156,8 @@ function teachingDialog(){
     case 'roster':title='添加学生名单';body='<p>填写已注册学生账号，一行一个；也可粘贴“账号 姓名”或 CSV 的账号列。</p>'+tf('roster','学生账号','textarea','student1 林同学\nstudent2 陈同学');break;
     case 'remove-student':title='移出教学班';body=`<p>确认将 ${E(f.label)} 移出当前教学班？历史实验记录保留作者。</p>`+tf('reason','调整原因（已开始实验时必填）','textarea');button='确认移出';break;
     case 'collaborator':title='添加协作教师';body='<p>添加后，该教师可查看并管理本次开课的教学班与实验。</p>'+tf('username','教师账号');break;
-    case 'template':case 'template-version':title=T.dialog==='template'?'创建实验内容':'保存实验新版本';body=tf('title','实验名称')+ts('rule_type','记录与判定方式',[['resistor-divider','电阻分压 · 电压判据'],['observation','通用实验 · 观察记录']])+tf('subject','所属学科','text','电子电路、普通物理等')+tf('objective','学习目标','textarea')+tf('steps_text','实验步骤（每行一步）','textarea')+tf('materials','器材与材料','textarea')+tf('safety','操作注意事项','textarea')+tf('report_instructions','报告要求','textarea')+(f.rule_type==='resistor-divider'?`<details><summary>分压参数与数值判据</summary><p class="small muted">测点固定为 TP0 参考地、TP1 供电、TP2 输出；仅支持 0–5 V 低压教学。</p><div class="extract-fields">${tf('r1_ohm','R1，Ω','number')}${tf('r2_ohm','R2，Ω','number')}${tf('supply_min_v','供电下限，V','number')}${tf('supply_max_v','供电上限，V','number')}${tf('tolerance_v','输出容许偏差，V','number')}</div></details>`:'<div class="notice">通用实验记录观察与证据，本阶段不自动判断其他学科的数值。</div>');button='保存内容版本';break;
+    case 'template':case 'template-version':
+      title=T.dialog==='template'?'创建实验讲义':'编辑实验讲义';body=teachingHandoutFields(f);button='保存讲义版本';break;
     case 'template-copy':title='复制实验内容';body=tf('title','副本名称');break;
     case 'publish':
       title=T.preview?'核对实验发布':'发布实验';button=T.preview?'确认发布':'预览发布';
@@ -161,7 +178,7 @@ function teachingDialog(){
 }
 function teachingPublishPreview(){
   const d=T.preview,v=T.catalog.templates.flatMap(t=>t.versions).find(v=>v.id===d.version_id);
-  return `<div class="publish-review"><h3>${E(d.title||v?.title)}</h3><p>${E(teachingOffering()?.title)} · ${E(teachingOffering()?.term)}</p><p>内容版本：${E(v?.number)}</p><p>开放：${teachingWhen(d.opens_at)}<br>截止：${teachingWhen(d.closes_at)}</p>${d.class_ids.map(id=>{const s=teachingScheme(d.scheme_ids[id]);return `<div class="notice"><strong>${E(teachingClass(id)?.name)}</strong><br>${s?'复用 '+E(s.name)+' · '+s.min_size+'–'+s.max_size+' 人 / 组':'新分组 · '+d.min_size+'–'+d.max_size+' 人 / 组 · '+(d.mode==='self'?'学生自主选组':'教师安排')}<br>选组截止 ${teachingWhen(s?s.deadline:d.selection_deadline||d.closes_at)}</div>`}).join('')}<p class="small muted">确认后向所选教学班发布，实验内容固定引用此版本。</p></div>`;
+  return `<div class="publish-review"><h3>${E(d.title||v?.title)}</h3><p>${E(teachingOffering()?.title)} · ${E(teachingOffering()?.term)}</p><p>内容版本：${E(v?.number)}</p><p>开放：${teachingWhen(d.opens_at)}<br>截止：${teachingWhen(d.closes_at)}</p>${d.class_ids.map(id=>{const s=teachingScheme(d.scheme_ids[id]);return `<div class="notice"><strong>${E(teachingClass(id)?.name)}</strong><br>${s?'复用 '+E(s.name)+' · '+s.min_size+'–'+s.max_size+' 人 / 组':'新分组 · '+d.min_size+'–'+d.max_size+' 人 / 组 · '+(d.mode==='self'?'学生自主选组':'教师安排')}<br>选组截止 ${teachingWhen(s?s.deadline:d.selection_deadline||d.closes_at)}</div>`}).join('')}${v?`<details class="handout-preview"><summary>预览学生看到的讲义</summary>${handoutMarkup(v.package)}</details>`:''}<p class="small muted">确认后向所选教学班发布，并固定引用这版讲义。</p></div>`;
 }
 
 function teachingReset(){
@@ -192,7 +209,10 @@ async function teachingSave(){
   if(kind==='clone')payload={offering_id:f.offering_id,term_id:f.term_id,term_name:f.term_name};
   if(kind==='class')payload={offering_id:T.offeringId,name:f.name};
   if(kind==='roster')payload={class_id:f.class_id,usernames:(f.roster||'').split(/\r?\n/).map(x=>x.trim().split(/[,，\s]+/)[0].replace(/^["']|["']$/g,'')).filter(x=>x&&!['username','学号','账号'].includes(x.toLowerCase()))};
-  if(kind==='template'||kind==='template-version')payload={...f,steps:(f.steps_text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)};
+  if(kind==='template'||kind==='template-version'){
+    const {handout_notes,handout_generated,steps_text,...fields}=f;
+    payload={...fields,steps:(steps_text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean)};
+  }
   if(kind==='publish'){
     if(!T.preview){
       const ids=f.class_ids||[];if(!ids.length)throw new Error('请至少选择一个教学班');
@@ -222,6 +242,22 @@ async function teachingAction(name){
   if(a==='logout'){T.catalog=null;T.authMode='login';return false}
   if(a==='register-open'){T.authMode='register';T.form={};S.error='';return true}
   if(a==='register-cancel'){T.authMode='login';S.error='';return true}
+  if(a==='read-handout'){
+    const task=T.catalog?.assignments.find(assignment=>assignment.id===v);
+    if(!task)throw new Error('未找到可查看的实验讲义。');
+    S.handout=task.experiment;S.modal='instructions';return true;
+  }
+  if(a==='draft-handout'){
+    if(!['template','template-version'].includes(T.dialog))return true;
+    if(!T.form.handout_notes?.trim())throw new Error('请先填写备课要点。');
+    toast('正在整理实验讲义草稿…');
+    const {draft}=await api('/teaching/handout-draft',{notes:T.form.handout_notes});
+    for(const key of ['title','subject','objective','principle','materials','preparation','safety','report_instructions','steps_text']){
+      const value=key==='steps_text'?draft.steps.join('\n'):draft[key];
+      if(!T.form[key]?.trim()&&value)T.form[key]=value;
+    }
+    T.form.handout_generated=true;return true;
+  }
   if(a==='teaching-save'){await teachingSave();return true}
   if(a==='publish-edit'){T.preview=null;return true}
   if(a==='manage'){
@@ -235,7 +271,7 @@ async function teachingAction(name){
       const version=T.catalog.templates[0]?.versions[0];if(!version)throw new Error('请先创建实验内容');
       Object.assign(defaults,{version_id:version.id,class_ids:[],min_size:1,max_size:4,allow_create:true,mode:'self'});
     }
-    if(v==='template')Object.assign(defaults,{title:'',subject:'电子电路',objective:'',steps_text:'预测结果\n搭建实验\n记录测量\n检查与复测\n解释结论',rule_type:'resistor-divider',r1_ohm:10000,r2_ohm:10000,supply_min_v:3.2,supply_max_v:3.4,tolerance_v:.05});
+    if(v==='template')Object.assign(defaults,{title:'',subject:'',objective:'',steps_text:'',rule_type:'observation',r1_ohm:10000,r2_ohm:10000,supply_min_v:3.2,supply_max_v:3.4,tolerance_v:.05});
     teachingOpen(v,defaults);return true;
   }
   if(a==='open-course'){teachingOpen('offering',{course_id:v,term_id:T.catalog.terms[0]?.id||''});return true}

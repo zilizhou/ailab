@@ -1,9 +1,9 @@
 {
-  "deployed_at_utc": "2026-11-26 03:41:23 UTC",
+  "deployed_at_utc": "2026-11-26 09:25:40 UTC",
   "server": "10.31.26.22",
   "ssh_user": "zlzhou",
   "url": "http://10.31.26.22:8766/",
-  "release": "20261126034022",
+  "release": "20261126092521",
   "service": "ai-lab-assistant.service",
   "service_manager": "systemd --user",
   "root": "/home/zlzhou/apps/ai-lab-assistant",
@@ -12,7 +12,7 @@
   "user_linger_enabled": true,
   "model_mode": "qwen-plus + qwen3-vl-plus",
   "verification": {
-    "backend_tests": 27,
+    "backend_tests": 28,
     "live_teaching_checks": 28,
     "frontend_runtime_checks": "approved experiment workspace plus management pages, 17 management dialogs, publish preview/confirmation, registration and grouping",
     "production_assets": "4 files matched to source",
@@ -21,18 +21,19 @@
     "browser_visual_check": "not performed",
     "frontend_context_switch": "stale responses discarded; roster-only updates reflected",
     "student_navigation": "bottom tabs across course, task, grouping, experiment, conclusion, records and profile pages; returning from profile reopens the task list; frontend checks passed locally and on server",
-    "backend_tests_scope": "27 backend tests passed for this release; 28 live teaching checks are from an earlier release",
+    "backend_tests_scope": "28 backend tests passed locally; the deployed handout test passed in the final release; earlier live teaching checks remain historical",
     "student_experiment_group": "group name, headcount, member names, and access to group details verified with live demo student data; regression check covers unsent text on return",
     "student_task_group": "task card shows the student group for that assignment; verified with two separate schemes in regression and with the live demo student",
     "model_connection": "Live text model was previously verified in student and teacher demo scopes; current release tested both visuals with the shared key and the deployed API",
-    "visual_analysis": "Synthetic PNG via the student API and MP4 via the teacher API returned live model responses; frontend VM checks covered file input and rendering"
+    "visual_analysis": "Synthetic PNG via the student API and MP4 via the teacher API returned live model responses; frontend VM checks covered file input and rendering",
+    "handout": "Live teacher generated a physics draft without saving; student opened the published LED handout from the task list; tests cover version freezing and publish preview"
   },
-  "previous_release": "20261126032932",
+  "previous_release": "20261126092239",
   "ui_version": "0.2",
   "ui_reference": "design/approved-ui-v0.2.html",
   "project": "验知有道——面向实验全过程的多模态智能助教",
   "platform_version": "0.2-stage1",
   "schema_version": 2,
-  "asset_version": "teaching09",
+  "asset_version": "teaching10",
   "database_backup": "shared/backups/pre-teaching-final-20261125150740.sqlite3"
 }

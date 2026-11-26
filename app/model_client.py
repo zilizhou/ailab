@@ -25,12 +25,14 @@ class ModelConfig:
 
 
 async def complete(config: ModelConfig, system: str, prompt: Union[str, list[dict]], *,
-                   max_tokens: int = 1200, timeout: int = 20) -> str:
+                   max_tokens: int = 1200, timeout: int = 20, json_object: bool = False) -> str:
     payload = {
         'model': config.model,
         'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': prompt}],
         'max_tokens': max_tokens,
     }
+    if json_object:
+        payload['response_format'] = {'type': 'json_object'}
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(config.base_url + '/chat/completions',
                                      headers={'Authorization': 'Bearer ' + config.api_key}, json=payload)
