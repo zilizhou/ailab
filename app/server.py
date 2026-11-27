@@ -90,6 +90,8 @@ def init_db():
             c.execute("INSERT OR IGNORE INTO users VALUES(?,?,?,?,?,?,?,?)", (username, username, name, role, salt, hash_password("Lab2026!", salt), "circuits-2026", group))
         from teaching import migrate
         migrate(c, EXPERIMENT, uid, now, packed)
+        from reports import migrate as migrate_reports
+        migrate_reports(c)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -271,7 +273,7 @@ def state(request: Request):
         course, ids, assignment = TEACHING.scope(c, who, request.query_params.get('assignment_id'), request.query_params.get('class_id'), request.query_params.get('offering_id'))
         if isinstance(course['experiment'], str):
             course['experiment'] = json.loads(course['experiment'])
-        return {"user": public_user(who), "course": course, "assignment": assignment, "groups": [group_data(c, who, gid) for gid in ids], "model_configured": ModelConfig.from_env() is not None, "vision_configured": ModelConfig.from_env('LAB_AI_VISION_MODEL') is not None, "server_time": now()}
+        return {"user": public_user(who), "course": course, "assignment": assignment, "groups": [group_data(c, who, gid) for gid in ids], "model_configured": ModelConfig.from_env() is not None, "vision_configured": ModelConfig.from_env('LAB_AI_VISION_MODEL') is not None, "report_enabled": True, "server_time": now()}
 
 @app.get("/api/health")
 def health():
@@ -411,6 +413,8 @@ async def submit(gid: str, request: Request):
         g = group_for(c, who, gid, "student")
         def run():
             writable(g, data)
+            if c.execute('SELECT 1 FROM process_reports WHERE group_id=? LIMIT 1', (gid,)).fetchone():
+                raise HTTPException(409, '此小组已使用实验过程报告，请从报告页面提交。')
             snapshot = group_data(c, who, gid)
             if not snapshot["latest"] and g['experiment'].get('rule_type') != 'observation':
                 raise HTTPException(422, "当前实物修订还没有测量记录，请先测量")
@@ -447,9 +451,10 @@ async def review(gid: str, request: Request):
                 raise HTTPException(409, "提交内容已变化，请刷新后重新复核")
             if data.get("decision") not in ("return", "feedback"):
                 raise HTTPException(422, "复核操作无效")
+            rating = scores_for_review(data) if data['decision'] == 'feedback' and formal_report(c, submission['id']) else {}
             status = "returned" if data["decision"] == "return" else "reviewed"
             c.execute("UPDATE groups SET status=? WHERE id=?", (status, gid))
-            return add_event(c, who, g, "review", {"text": text_field(data, "text", 3000), "decision": data["decision"], "submission_id": submission["id"]})
+            return add_event(c, who, g, "review", {"text": text_field(data, "text", 3000), "decision": data["decision"], "submission_id": submission["id"], **rating})
         return once(c, who, data, f"review:{gid}", run)
 
 @app.post("/api/groups/{gid}/photo")
@@ -655,6 +660,8 @@ async def assist(request: Request):
 
 from teaching import install
 TEACHING = install(app, globals())
+from reports import install as install_reports, formal_report, scores_for_review
+REPORTS = install_reports(app, globals())
 
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 

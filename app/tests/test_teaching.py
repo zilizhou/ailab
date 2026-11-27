@@ -251,6 +251,62 @@ class TeachingManagement(unittest.TestCase):
         r = self.s1.post('/api/groups/' + g['id'] + '/submit', json=op(revision=1, conclusion='记录观察，等待教师核对。'))
         self.assertEqual(r.status_code, 200, r.text)
 
+    def test_formal_report_private_reflections_return_grades_and_exports(self):
+        task = self.setup_task(rule_type='observation')
+        team = self.change('team-create', self.s1, scheme_id=task['scheme'])['id']
+        self.change('team-join', self.s2, team_id=team)
+        group = self.record(task, raw='正接时观察到发光，电源与限流电阻保持一致。')
+        gid = group['id']
+        route = '/api/groups/' + gid + '/report'
+        sections = {'method': '对照两种接法。', 'analysis': '核对相同供电条件。', 'conclusion': '记录了正接时的发光。'}
+        s1_reflection, s2_reflection = '我负责记录条件。', '我先预测，再核对现象。'
+        save1 = self.s1.post(route+'/draft', json=op(revision=1, draft_edit=0, sections=sections))
+        self.assertEqual(save1.json()['edit'], 1)
+        overwrite = self.s2.post(route+'/draft', json=op(revision=1, draft_edit=0, sections=sections))
+        self.assertEqual(overwrite.status_code, 409)
+        draft = self.s2.get(route).json()
+        self.assertEqual(draft['sections']['method'], sections['method'])
+        self.assertEqual(draft['reflection_progress'], {'completed': 0, 'required': 2})
+        incomplete = self.s1.post(route+'/submit', json=op(revision=1, draft_edit=1, sections=sections,
+                                                          reflection_edit=0, reflection=s1_reflection))
+        self.assertEqual(incomplete.status_code, 422)
+        self.assertEqual(self.s1.get(route).json()['reflection'], '', 'Failed submission rolls back private text and draft')
+        self.assertEqual(self.s2.post(route+'/reflection', json=op(revision=1, reflection_edit=0, reflection=s2_reflection)).status_code, 200)
+        self.assertNotIn(s2_reflection, self.s1.get(route).text)
+        first_payload = op(revision=1, draft_edit=1, sections=sections, reflection_edit=0, reflection=s1_reflection)
+        first = self.s1.post(route+'/submit', json=first_payload)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(self.s1.post(route+'/submit', json=first_payload).json(),first.json())
+        first_id = first.json()['id']
+        self.assertNotIn(s2_reflection, self.s1.get(route).text)
+        self.assertNotIn(s2_reflection, self.s1.get('/api/state', params={'assignment_id': task['assignment']}).text)
+        self.assertIn(s2_reflection, self.t.get(route).text)
+        review = '/api/groups/' + gid + '/review'
+        rejected = self.t.post(review, json=op(submission_id=first_id, decision='feedback', text='需要完善。'))
+        self.assertEqual(rejected.status_code, 422)
+        self.assertEqual(self.t.post(review, json=op(submission_id=first_id, decision='return', text='补充反接证据。')).status_code, 200)
+        self.assertEqual(self.s1.get(route+'.pdf', params={'submission_id':first_id,'reviewed':'1'}).status_code, 409)
+        self.record(task, raw='反接时没有观察到发光，供电条件相同。')
+        updated = {**sections, 'conclusion':'比较正接与反接，发光情况不同。'}
+        second = self.s1.post(route+'/submit', json=op(revision=1, draft_edit=2, sections=updated))
+        self.assertEqual(second.status_code, 200, second.text)
+        second_id = second.json()['id']
+        grades = {'process':23,'evidence':28,'analysis':28,'presentation':13}
+        too_high = self.t.post(review,json=op(submission_id=second_id,decision='feedback',text='已核对。',scores={**grades,'process':26}))
+        self.assertEqual(too_high.status_code, 422)
+        self.assertEqual(self.t.post(review,json=op(submission_id=second_id,decision='feedback',text='已核对。',scores=grades)).status_code, 200)
+        prior = self.s1.get(route, params={'submission_id':first_id}).json()['submission']
+        self.assertEqual(prior['sections']['conclusion'], sections['conclusion'])
+        self.assertEqual(prior['evaluation']['text'], '补充反接证据。')
+        latest = self.s1.get(route).json()['submission']
+        self.assertEqual(latest['evaluation']['total'],92)
+        self.assertEqual(latest['reflections'],[{'name':'林同学','text':s1_reflection}])
+        for query in ({'submission_id':second_id}, {'submission_id':second_id,'reviewed':'1'}):
+            response = self.s1.get(route+'.pdf',params=query)
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.content.startswith(b'%PDF-'))
+        self.assertEqual(TestClient(server.app).get(route+'.pdf').status_code, 401)
+
     def test_invitation_permissions_and_atomic_publication(self):
         a = self.setup_task()
         newcomer = TestClient(server.app)

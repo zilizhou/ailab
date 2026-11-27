@@ -4,6 +4,7 @@ const root={innerHTML:'',addEventListener(){},querySelectorAll(){return []}};
 const toast={textContent:'',classList:{add(){},remove(){}}},storage=new Map();
 const context=vm.createContext({console,TextEncoder,crypto:{getRandomValues:b=>require('node:crypto').webcrypto.getRandomValues(b)},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},document:{querySelector:s=>s==='#app'?root:s==='#toast'?toast:null,addEventListener(){},activeElement:{matches:()=>false}},window:{addEventListener(){}},setTimeout(){},clearTimeout(){},setInterval(){},fetch:async()=>({ok:false,status:401,json:async()=>({detail:'请先登录'})})});
 vm.runInContext(fs.readFileSync('static/teaching.js','utf8'),context);
+vm.runInContext(fs.readFileSync('static/reports.js','utf8'),context);
 vm.runInContext(fs.readFileSync('static/app.js','utf8'),context);
 const run=s=>vm.runInContext(s,context);
 const p={id:'resistor-divider',version:'1',rule_type:'resistor-divider',title:'分压实验',subject:'电子电路',objective:'理解分压关系',steps:['预测','测量'],safety:'改线前断电',points:{TP0:'参考地',TP1:'供电',TP2:'输出'},r1_ohm:10000,r2_ohm:10000,supply_min_v:3.2,supply_max_v:3.4,tolerance_v:.05};
@@ -154,6 +155,32 @@ async function main(){
   assert.match(root.innerHTML,/data-action="view:lab"[^>]*>进入实验/);
   await run("action('view:lab')");run('render()');
   assert.ok(root.innerHTML.includes('尚未提交的实验观察'),'Checking the current group must preserve unsent experiment text');
+  const liveReport={group_id:'run1',status:'working',revision:1,history:[],submission:null,
+    sections:{objective:'理解分压',method:'',analysis:'',conclusion:''},draft_edit:0,reflection:'',reflection_edit:0,
+    reflection_progress:{completed:0,required:2},rubric:[{key:'process',label:'实验过程',maximum:25}]};
+  context.fetch=async(path,opts)=>{
+    if(path.endsWith('/report'))return {ok:true,json:async()=>liveReport};
+    assert.match(path,/\/report\/reflection$/);
+    const body=JSON.parse(opts.body);assert.equal(body.reflection,'我的反思');
+    assert.equal(body.reflection_edit,0);
+    return {ok:true,json:async()=>({saved:true,edit:1})};
+  };
+  run('S.data.report_enabled=true');
+  await run("action('view:submit')");run('render()');
+  assert.match(root.innerHTML,/小组报告草稿/);
+  assert.match(root.innerHTML,/0 \/ 2 人已保存/);
+  run('R.reflection="我的反思"');
+  await run("action('report-reflect')");run('render()');
+  assert.match(root.innerHTML,/1 \/ 2 人已保存/);
+  const savedReport={...liveReport,status:'reviewed',history:[{id:'report-id',created:'2026-11-27T13:30:00Z'}],
+    submission:{id:'report-id',formal:true,sections:{conclusion:'核对了观察记录'},reflections:[{name:'甲',text:'个人总结'}],
+      evaluation:{decision:'feedback',author:'教师',created:'2026-11-27T13:40:00Z',total:92,maximum:100,scores:[{key:'process',label:'实验过程',score:23,maximum:25}],text:'已核对。'}}};
+  run('current().status="reviewed";setReport('+JSON.stringify(savedReport)+');render()');
+  assert.match(root.innerHTML,/导出带评分和评语的 PDF/);
+  assert.match(root.innerHTML,/report\.pdf\?submission_id=report-id&amp;reviewed=1/);
+  run('S.view="report-review";S.data.user.role="teacher";R.data.status="submitted";current().status="submitted";render()');
+  assert.match(root.innerHTML,/发布评分与评语/);
+  assert.match(root.innerHTML,/组员个人反思/);
   run('S.data=null;T.authMode="register";render()');assert.ok(root.innerHTML.includes('register-form'));
   assert.ok(!root.innerHTML.includes('x-phonenav'));
   console.log('PASS: course/class/template/task pages, 17 dialogs, publication preview/confirmation, student grouping/registration, observation workspace, escaping');

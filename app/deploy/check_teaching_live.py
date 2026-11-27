@@ -11,6 +11,7 @@ from zipfile import ZipFile
 parser = argparse.ArgumentParser()
 parser.add_argument('--base-url', required=True)
 parser.add_argument('--data-dir', required=True)
+parser.add_argument('--report-samples-dir', type=Path, help='Optional directory for exported synthetic report samples')
 args = parser.parse_args()
 os.environ['LAB_DATA_DIR'] = args.data_dir
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -60,6 +61,21 @@ def record(c, aid, text):
     b = c.post('/api/groups/' + g['id'] + '/records', json=payload)
     check(a.json() == b.json(), 'measurement retry idempotency')
     return state(c, aid)['groups'][0]
+
+
+def report(c, path, **params):
+    response = c.get(path, params=params)
+    response.raise_for_status()
+    return response.json()
+
+
+def export_report(c, path, filename, reviewed=False):
+    response = c.get(path+'.pdf', params={'reviewed': '1'} if reviewed else {})
+    response.raise_for_status()
+    check(response.headers['content-type']=='application/pdf' and response.content.startswith(b'%PDF-'), 'live report PDF export')
+    if args.report_samples_dir:
+        args.report_samples_dir.mkdir(parents=True, exist_ok=True)
+        (args.report_samples_dir / filename).write_bytes(response.content)
 
 try:
     with server.db(True) as db:
@@ -134,6 +150,38 @@ try:
     submission = post(s1, '/api/groups/' + g2['id'] + '/submit', revision=1, conclusion='以TP0为参考点，输出1.10V，与实测供电三分之一一致。')
     post(teacher, '/api/groups/' + g2['id'] + '/review', submission_id=submission['id'], decision='feedback', text='验收已复核。')
     check(state(s2, aid2)['groups'][0]['status'] == 'reviewed', 'shared conclusion feedback')
+    led = change('template', title='LED 极性与限流观察实验', subject='电子电路', rule_type='observation',
+                 objective='比较正接和反接的发光现象。', steps=['保持电源与限流条件一致。','比较并记录两种接法的观察。'])
+    templates.append(led['id'])
+    led_id = change('publish', offering_id=oid, class_ids=[cls], template_id=led['id'], scheme_ids={cls:scheme})['id']
+    led_group = record(s1, led_id, '正接时观察到发光，记录了供电和限流条件。')
+    led_path = '/api/groups/' + led_group['id'] + '/report'
+    led_review = '/api/groups/' + led_group['id'] + '/review'
+    student_1 = '我记录了供电条件，下次先核对接法。'
+    student_2 = '我负责观察现象，下次保留操作顺序。'
+    for c, reflection in [(s1,student_1),(s2,student_2)]:
+        post(c, led_path+'/reflection', revision=1, reflection_edit=0, reflection=reflection)
+    check(report(s1,led_path)['reflection_progress']=={'completed': 2,'required':2}, 'two private reflections ready for submission')
+    draft = {'method':'比较两种接法，保留限流和供电条件。','conclusion':'正接有发光记录。'}
+    first = post(s1, led_path+'/submit', revision=1, draft_edit=0, sections=draft)['id']
+    post(teacher, led_review, submission_id=first, decision='return', text='请补充反接现象与供电条件。')
+    record(s2, led_id, '反接时未观察到发光，供电与限流条件保持一致。')
+    final = post(s2, led_path+'/submit', revision=1, draft_edit=1,
+                 sections={**draft,'analysis':'两段观察在相同供电与限流条件下进行。','conclusion':'本组观察到正接发光，反接未发光。'})['id']
+    post(teacher, led_review, submission_id=final, decision='feedback', text='两次记录说明了对照条件，继续保留照片佐证。',
+         scores={'process':23,'evidence':28,'analysis':28,'presentation':13})
+    check(report(s1,led_path,submission_id=first)['submission']['evaluation']['decision']=='return', 'prior report and return remain available after resubmission')
+    latest = report(s1,led_path)['submission']
+    check(latest['evaluation']['total']==92 and [p['text'] for p in latest['reflections']]==[student_1], 'published grades and private student reflection')
+    check(len(report(teacher,led_path)['submission']['reflections'])==2 and outside.get(led_path+'.pdf').status_code==404, 'report review and download are permission-scoped')
+    export_report(s1,led_path,'led-standard.pdf')
+    export_report(s1,led_path,'led-reviewed.pdf',reviewed=True)
+    d2 = record(s1, aid, '供电3.30V，输出1.64V，黑表笔接TP0')
+    divider_path = '/api/groups/' + d2['id'] + '/report'
+    for c,reflection in [(s1,student_1),(s2,student_2)]:
+        post(c,divider_path+'/reflection',revision=2,reflection_edit=0,reflection=reflection)
+    post(s1,divider_path+'/submit',revision=2,draft_edit=0,sections={'method':'先预测分压，保留两次已确认的测量。','conclusion':'复测输出与预期接近。'})
+    export_report(s1,divider_path,'divider-standard.pdf')
     term2 = change('term', name=prefix + '下一学期')['id'];terms.append(term2)
     clone = change('clone', offering_id=oid, term_id=term2)['id'];offerings.append(clone)
     new = next(o for o in catalog(teacher)['offerings'] if o['id'] == clone)

@@ -64,6 +64,16 @@
 #lab-v2 .handout-rules{border:0;margin:0;padding:0;min-width:0}
 #lab-v2 .handout-filename,#lab-v2 .handout-file{overflow-wrap:anywhere}
 #lab-v2 .handout-file a{color:var(--b);font-weight:600}
+#lab-v2 .report-history,#lab-v2 .report-downloads{margin:14px 0}
+#lab-v2 .report-history .x-actions{margin-top:6px}
+#lab-v2 .report-entry{margin-top:14px}
+#lab-v2 .report-entry p{margin-top:4px}
+#lab-v2 .report-evidence article{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}
+#lab-v2 .report-total{color:var(--b);font-size:32px;font-weight:700;margin:10px 0}
+#lab-v2 .report-total small{font-weight:400;font-size:15px;color:var(--muted)}
+#lab-v2 .report-scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0 14px}
+#lab-v2 .report-scores div{background:var(--soft);padding:8px 10px;border-radius:8px}
+#lab-v2 .report-scores dd{margin:2px 0 0;font-weight:600}
 #lab-v2 .student-profile{display:flex;align-items:center;gap:14px;margin-top:18px}
 #lab-v2 .student-profile .x-avatar{width:48px;height:48px;flex-shrink:0;font-size:20px}
 #lab-v2 .student-profile p{margin:6px 0 0}
